@@ -1,0 +1,1 @@
+docker run --gpus all -it -v C:\gurobi\gurobi.lic:/root/gurobi.lic neur2bilo-docker
