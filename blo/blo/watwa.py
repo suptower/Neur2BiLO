@@ -1,4 +1,6 @@
 import json
+import os
+import re
 import subprocess
 import numpy as np
 
@@ -9,24 +11,24 @@ class Watwa(BLO):
     """
     Bilevel problem wrapper for the WatwaOS optimizer.
 
-    Leader:   selects a subset of cc_alt_vars (configuration switch candidates)
-              x ∈ {0,1}^m  with  ||x||_0 = 2k
-              (m = 6k, k = number of IO configuration switch points)
+    Leader:   selects a configuration decision for each switch point.
+              x ∈ {0, 1, 2}^k  where k = number of configuration switch points.
+
+              Each position encodes:
+                0 = no frequency change
+                1 = switch to low frequency
+                2 = switch to high frequency
+
+              Total scenarios = 3^k (grows exponentially with k).
+              Each UART/IO loop contributes 2 switch points → k = 2 * num_io_loops.
 
     Follower: WatwaOS ILP solver finds the optimal energy configuration
-              for the program under the leader's constraints.
+              for the program under the leader's chosen scenario.
               Returns total energy consumption as the objective value.
     """
 
-    def __init__(self, watwa_bin, config_path):
-        """
-        Parameters
-        ----------
-        watwa_bin   : str  path to the WatwaOS optimizer binary/script
-        config_path : str  path to the instruction cost configuration file
-        """
-        self.watwa_bin = watwa_bin
-        self.config_path = config_path
+    def __init__(self):
+        pass
 
 
     # ------------------------------------------------------------------
@@ -35,62 +37,62 @@ class Watwa(BLO):
 
     def sample_instance(self, cfg, scale=True):
         """
-        Sample a random program instance.
+        Sample a random program instance from the pool defined in cfg.
 
-        For now this reads a program from a pre-generated pool.
-        Later: generate synthetic C programs on the fly.
+        cfg.program_dirs : list of paths to program directories,
+                           each containing a Makefile and src/app.c
         """
-        # TODO: implement random program selection from a pool
-        # Placeholder: pick a random program path from cfg
-        program_path = np.random.choice(cfg.program_paths)
-        instance = self.read_instance(cfg, program_path, scale=scale)
+        program_dir = np.random.choice(cfg.program_dirs)
+        instance = self.read_instance(cfg, program_dir, scale=scale)
         return instance
 
 
-    def read_instance(self, cfg, program_path, scale=True):
+    def read_instance(self, cfg, program_dir, scale=True):
         """
-        Read a program instance and run WatwaOS to get all scenario results.
+        Run the full WatwaOS pipeline for a program and return an instance dict.
 
-        Returns a dict with:
-          - program_path : path to the C program
-          - scenarios    : dict mapping scenario-tuple to {time, energy}
-          - cc_alt_vars  : list of cc_alt_var names (in order)
-          - ideal_energy : optimal energy found by WatwaOS
-          - m            : total number of cc_alt_vars
-          - k            : number of IO switch points (m = 6k)
+        Pipeline:
+            make clean -> make build -> make optimize
+            -> build/optimize-result.json
+            -> build/scenarios/gurobi-model-*.lp
+
+        Returns
+        -------
+        dict with keys:
+            program_dir  : path to program directory
+            scenarios    : dict {scenario_key_str: {time, energy, energy_scaled}}
+            ideal_energy : optimal energy found by exhaustive ILP
+            ideal_scenario : key of the optimal scenario e.g. "(2, 0)"
+            worst_energy : max energy across all scenarios (for normalization)
+            k            : number of switch points (tuple length in scenario keys)
         """
-        # Run WatwaOS optimizer
-        result = self._run_watwa(program_path)
+        result = self._run_watwa(program_dir)
 
-        # Parse scenario results
         scenarios = result["solutions"]
         ideal_energy = result["ideal_energy"]
+        ideal_scenario = result["ideal_scenario"]
 
-        # Extract cc_alt_vars structure from .lp files
-        # (parsed separately, see utils/watwa.py)
-        # TODO: parse cc_alt_vars from generated .lp files
-        cc_alt_vars = self._parse_cc_alt_vars(program_path)
-        m = len(cc_alt_vars)
-        k = m // 6   # m = 6k by empirical observation
+        # Infer k from the first scenario key, e.g. "(2, 0)" -> k=2
+        first_key = next(iter(scenarios))
+        k = len(eval(first_key))
 
-        if scale:
-            # Normalize energy by worst-case (all-high-freq) energy
-            worst_energy = max(s["energy"] for s in scenarios.values())
-            for s in scenarios.values():
-                s["energy_scaled"] = s["energy"] / worst_energy if worst_energy > 0 else 0
-        else:
-            worst_energy = 1
+        # Normalize energy by worst-case scenario
+        worst_energy = max(s["energy"] for s in scenarios.values())
+        for s in scenarios.values():
+            s["energy_scaled"] = s["energy"] / worst_energy if worst_energy > 0 else 0.0
+
+        if not scale:
+            worst_energy = 1.0
             for s in scenarios.values():
                 s["energy_scaled"] = s["energy"]
 
         instance = {
-            "program_path" : program_path,
-            "scenarios"    : scenarios,
-            "cc_alt_vars"  : cc_alt_vars,
-            "ideal_energy" : ideal_energy,
-            "worst_energy" : worst_energy,
-            "m"            : m,
-            "k"            : k,
+            "program_dir"    : program_dir,
+            "scenarios"      : scenarios,
+            "ideal_energy"   : ideal_energy,
+            "ideal_scenario" : ideal_scenario,
+            "worst_energy"   : worst_energy,
+            "k"              : k,
         }
 
         return instance
@@ -104,38 +106,36 @@ class Watwa(BLO):
         """
         Solve the follower problem for a given leader decision x.
 
-        x is a binary vector of length m = 6k indicating which
-        cc_alt_vars are active (1) or blocked (0).
+        x is a categorical vector of length k with values in {0, 1, 2},
+        e.g. [2, 0] corresponds to scenario key "(2, 0)".
 
-        Since WatwaOS pre-computes all scenarios, we can look up
-        the result directly from the cached scenario dict.
+        Since WatwaOS pre-computes all scenarios exhaustively, we look
+        up the result directly from the cached scenario dict.
 
         Parameters
         ----------
-        instance : dict  output of read_instance()
-        x        : list/array of 0/1 of length m
+        instance : dict    output of read_instance()
+        x        : list    categorical vector of length k, values in {0,1,2}
 
         Returns
         -------
         dict with follower_obj, follower_sol, leader_obj, leader_sol
         """
-        # Convert x to scenario key (tuple of active cc_alt_vars indices)
-        scenario_key = self._x_to_scenario_key(x, instance["cc_alt_vars"])
-
+        scenario_key = self._x_to_scenario_key(x)
         scenarios = instance["scenarios"]
 
-        if scenario_key in scenarios:
-            energy = scenarios[scenario_key]["energy_scaled"]
-        else:
-            # Scenario not pre-computed: run WatwaOS for this specific x
-            # TODO: implement targeted single-scenario WatwaOS call
-            energy = self._run_single_scenario(instance["program_path"], x)
+        if scenario_key not in scenarios:
+            raise KeyError(
+                f"Scenario {scenario_key} not found in pre-computed results."
+            )
+
+        energy = scenarios[scenario_key]["energy_scaled"]
 
         res = {
-            "follower_obj" : energy,      # energy to minimize (leader obj)
-            "follower_sol" : x,           # cc_alt_vars assignment
+            "follower_obj" : energy,
+            "follower_sol" : list(x),
             "leader_obj"   : energy,
-            "leader_sol"   : x,
+            "leader_sol"   : list(x),
         }
 
         return res
@@ -145,76 +145,61 @@ class Watwa(BLO):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _run_watwa(self, program_path):
+    def _run_watwa(self, program_dir):
         """
-        Call WatwaOS optimizer and return parsed JSON result.
-        """
-        cmd = [self.watwa_bin, program_path, self.config_path]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        Run the full WatwaOS pipeline for a program directory.
 
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"WatwaOS failed for {program_path}:\n{result.stderr}"
+        Directory structure expected:
+            program_dir/
+                src/app.c      <- C source
+                Makefile       <- with clean / build / optimize targets
+                build/         <- created by make
+
+        Steps:
+            1. make clean
+            2. make build      -> compiles app.c to app.o, app.o.ll, app.c.pml
+            3. make optimize   -> runs optimizer.py -> optimize-result.json
+
+        Returns parsed optimize-result.json as dict.
+        """
+        result_path = os.path.join(program_dir, "build", "optimize-result.json")
+
+        self._make(program_dir, "clean")
+        self._make(program_dir, "build")
+        self._make(program_dir, "optimize")
+
+        if not os.path.exists(result_path):
+            raise FileNotFoundError(
+                f"optimize-result.json not found at {result_path}"
             )
 
-        # WatwaOS writes JSON to stdout or a fixed output path
-        # TODO: adjust based on actual WatwaOS output location
-        output = json.loads(result.stdout)
+        with open(result_path, "r") as f:
+            output = json.load(f)
+
         return output
 
 
-    def _parse_cc_alt_vars(self, program_path):
-        """
-        Parse cc_alt_vars from the generated .lp files.
-
-        WatwaOS generates gurobi-model-*.lp files alongside the JSON.
-        Each .lp file contains the cc_alt_vars for that batch of scenarios.
-
-        Returns ordered list of cc_alt_var names.
-        """
-        import re
-        import os
-
-        lp_dir = os.path.dirname(program_path)
-        lp_files = sorted(f for f in os.listdir(lp_dir) if f.startswith("gurobi-model"))
-
-        if not lp_files:
-            raise FileNotFoundError(f"No .lp files found in {lp_dir}")
-
-        # All .lp files have the same cc_alt_vars – read from first file
-        with open(os.path.join(lp_dir, lp_files[0])) as f:
-            content = f.read()
-
-        # Extract cc_alt_vars from the base model (before first Scenario block)
-        base = content.split("Scenario")[0]
-        vars_found = sorted(set(re.findall(r'cc_alt_vars_\d+', base)),
-                            key=lambda v: int(v.split("_")[-1]))
-
-        return vars_found
-
-
-    def _x_to_scenario_key(self, x, cc_alt_vars):
-        """
-        Convert binary vector x to a scenario lookup key.
-
-        The scenario keys in the JSON are tuples like "(2, 0)" representing
-        the active configuration indices. This mapping needs to be aligned
-        with how WatwaOS generates scenario keys.
-
-        TODO: clarify exact scenario key format from WatwaOS JSON output.
-        """
-        active_indices = [i for i, val in enumerate(x) if val == 1]
-        return str(tuple(active_indices))
-
-
-    def _run_single_scenario(self, program_path, x):
-        """
-        Run WatwaOS for a single specific cc_alt_vars configuration.
-
-        Used when the requested scenario was not pre-computed.
-        TODO: implement once WatwaOS supports targeted scenario runs.
-        """
-        raise NotImplementedError(
-            "Single-scenario WatwaOS calls not yet implemented. "
-            "Use pre-computed scenarios only."
+    def _make(self, program_dir, target):
+        """Run a make target in the given program directory."""
+        result = subprocess.run(
+            ["make", target],
+            cwd=program_dir,
+            capture_output=True,
+            text=True
         )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"make {target} failed in {program_dir}:\n{result.stderr}"
+            )
+
+
+    def _x_to_scenario_key(self, x):
+        """
+        Convert categorical leader decision vector x to a scenario lookup key.
+
+        x = [2, 0]  →  "(2, 0)"
+        x = [1, 2, 0, 1]  →  "(1, 2, 0, 1)"
+
+        This matches the key format in optimize-result.json exactly.
+        """
+        return str(tuple(int(v) for v in x))

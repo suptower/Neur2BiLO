@@ -1,3 +1,4 @@
+# Dockerfile for Neur2BiLO with CUDA Support on Windows
 FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
