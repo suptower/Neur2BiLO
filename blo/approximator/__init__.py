@@ -2,6 +2,7 @@ import blo.params as params
 from .kp import KnapsackApproximator
 from .cng import CriticalNodeGameApproximator
 from .dr import DonorRecipientApproximator
+from .watwa import WatwaApproximator
 
 
 def factory_approximator(args, cfg, blo, net, instance):
@@ -14,6 +15,9 @@ def factory_approximator(args, cfg, blo, net, instance):
 
     elif "dr" in args.problem:
         return DonorRecipientApproximator(args, cfg, blo, net, instance)
+
+    elif "watwa" in args.problem:
+        return WatwaApproximator(args, cfg, blo, net, instance)
 
     else:
         raise ValueError("Invalid problem type!")

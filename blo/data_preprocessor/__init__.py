@@ -19,5 +19,10 @@ def factory_dp(args, model_type, approx_type, problem, device):
         from .dr import DonorRecipientDataPreprocessor
         return DonorRecipientDataPreprocessor(model_type, approx_type, device)
 
+    elif "watwa" in problem:
+        print("Loading WatwaOS data preprocessor...")
+        from .watwa import WatwaDataPreprocessor
+        return WatwaDataPreprocessor(model_type, approx_type, device)
+
     else:
         raise ValueError("Invalid problem type!")

@@ -19,5 +19,10 @@ def factory_dm(problem):
         from .dr import DonorRecipientDataManager
         return DonorRecipientDataManager(cfg)
 
+    elif "watwa" in problem:
+        print("Loading WatwaOS data manager...")
+        from .watwa import WatwaDataManager
+        return WatwaDataManager(cfg)
+
     else:
         raise ValueError("Invalid problem type!")
