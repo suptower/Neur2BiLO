@@ -247,3 +247,22 @@ class WatwaDataPreprocessor(DataPreprocessor):
                 if loop_name in pabb_name or pabb_name in loop_name:
                     return bound
         return 1
+
+    # ------------------------------------------------------------------
+    # Unused abstract method stubs (required by base class)
+    # ------------------------------------------------------------------
+
+    def get_ff_fixed_dataset(self, data):
+        raise NotImplementedError(
+            "ff_fixed model not implemented for WatwaOS. Use inst_encoder."
+        )
+
+    def get_ff_invariant_dataset(self, data):
+        raise NotImplementedError(
+            "ff_invariant model not implemented for WatwaOS. Use inst_encoder."
+        )
+
+    def get_set_invariant_dataset(self, data):
+        raise NotImplementedError(
+            "set_invariant model not implemented for WatwaOS. Use inst_encoder."
+        )
