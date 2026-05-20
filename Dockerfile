@@ -47,7 +47,8 @@ RUN python -m pip install \
         pandas \
         scipy \
         matplotlib \
-        gurobi-machinelearning
+        gurobi-machinelearning \
+        pyyaml
 
 # Create required data directories
 RUN mkdir -p data/kp/random_search \
