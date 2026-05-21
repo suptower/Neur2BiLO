@@ -15,10 +15,10 @@ POWER_LOW_NW   =  28_483_000   # CpuLowFreq  power in nW
 class WatwaDataPreprocessor(DataPreprocessor):
 
     def __init__(self, model_type, approx_type, device, cfg=None):
-        self.model_type  = model_type
-        self.approx_type = approx_type
-        self.device      = device
-        self.cfg         = cfg
+        self.model_type   = model_type
+        self.approx_type  = approx_type
+        self.device       = device
+        self.cfg          = cfg
         self.label_scaler = None
 
 
@@ -33,6 +33,22 @@ class WatwaDataPreprocessor(DataPreprocessor):
 
 
     # ------------------------------------------------------------------
+    # Padding helper
+    # ------------------------------------------------------------------
+
+    def get_max_s(self, data):
+        """Get maximum number of switch-points across all samples."""
+        return max(sample["instance"]["k"] for sample in data)
+
+    def pad_features(self, feats, pad_size, feat_dim):
+        """Pad feature list to pad_size with zero vectors."""
+        n_to_add = pad_size - len(feats)
+        if n_to_add > 0:
+            feats += [[0.0] * feat_dim] * n_to_add
+        return feats
+
+
+    # ------------------------------------------------------------------
     # Dataset construction
     # ------------------------------------------------------------------
 
@@ -40,24 +56,21 @@ class WatwaDataPreprocessor(DataPreprocessor):
         """
         Build PyTorch dataset for the inst_encoder model.
 
-        Per sample:
-          inst_features    : (s, n_inst_feats)   – instance features per switch-point
-          decision_features: (s, n_dec_feats)    – decision-dependent features
-          decisions        : (s,)                – x vector (ternary)
-          n_decisions      : scalar              – s (number of switch-points)
-          labels           : scalar              – follower_obj (energy, scaled)
-
-        where s = instance["k"] = number of switch-points.
+        All samples are padded to max_s switch-points for batching.
         """
+        # Determine padding size across all samples
+        pad_size = self.get_max_s(data)
+        n_inst   = 10
+        n_dec    = 5
+
         inst_features, decision_features, decisions, n_decisions, labels = \
             [], [], [], [], []
 
         for sample in data:
             instance = sample["instance"]
-            x        = sample["x"]            # ternary vector, length s
+            x        = sample["x"]
             s        = instance["k"]
 
-            # Parse PML features for this instance
             pml_feats = self._parse_pml_features(instance)
 
             inst_feats = []
@@ -66,44 +79,49 @@ class WatwaDataPreprocessor(DataPreprocessor):
             for i in range(s):
                 pf = pml_feats[i]
 
-                # --- Instance features (independent of x) ---
                 inst_feat = [
-                    pf["time_ns_high"]   / 1e6,    # normalize to ms scale
+                    pf["time_ns_high"]   / 1e6,
                     pf["time_ns_low"]    / 1e6,
-                    pf["power_nw_high"]  / 1e9,    # normalize to W scale
+                    pf["power_nw_high"]  / 1e9,
                     pf["power_nw_low"]   / 1e9,
-                    pf["energy_high"]    / 1e15,   # normalize energy
+                    pf["energy_high"]    / 1e15,
                     pf["energy_low"]     / 1e15,
-                    pf["loop_bound"]     / 2500,   # normalize by typical max
+                    pf["loop_bound"]     / 2500,
                     float(pf["is_uart"]),
                     pf["position_norm"],
-                    s / 20,                        # normalize by typical max s
+                    s / 20,
                 ]
                 inst_feats.append(inst_feat)
 
-                # --- Decision features (depend on x[i]) ---
-                xi = int(x[i])
+                xi       = int(x[i])
                 tc_time  = pf["transition_costs"][xi]["time_ns"]  / 1e6
                 tc_power = pf["transition_costs"][xi]["power_nw"] / 1e9
 
                 dec_feat = [
-                    float(xi == 0),   # one-hot x=0: no change
-                    float(xi == 1),   # one-hot x=1: switch to low freq
-                    float(xi == 2),   # one-hot x=2: switch to high freq
+                    float(xi == 0),
+                    float(xi == 1),
+                    float(xi == 2),
                     tc_time,
                     tc_power,
                 ]
                 dec_feats.append(dec_feat)
 
+            # Pad to pad_size
+            inst_feats = self.pad_features(inst_feats, pad_size, n_inst)
+            dec_feats  = self.pad_features(dec_feats,  pad_size, n_dec)
+
+            # Pad x vector
+            x_padded = list(x) + [0] * (pad_size - s)
+
             # Label (scaled)
             label = sample["follower_obj"]
             if self.label_scaler is not None:
                 lo, hi = self.label_scaler
-                label = (label - lo) / (hi - lo) if hi > lo else 0.0
+                label  = (label - lo) / (hi - lo) if hi > lo else 0.0
 
             inst_features.append(inst_feats)
             decision_features.append(dec_feats)
-            decisions.append(x)
+            decisions.append(x_padded)
             n_decisions.append(s)
             labels.append(label)
 
@@ -113,8 +131,11 @@ class WatwaDataPreprocessor(DataPreprocessor):
         n_decisions       = self.to_tensor(np.array(n_decisions)).to(self.device)
         labels            = self.to_tensor(np.array(labels)).to(self.device)
 
+        # Dummy p-Tensor (nicht verwendet, aber Trainings-Skript erwartet 6 tensors)
+        p = self.to_tensor(np.zeros((len(labels), 1))).to(self.device)
+
         return TensorDataset(inst_features, decision_features, decisions,
-                             n_decisions, labels)
+                             n_decisions, p, labels)
 
 
     # ------------------------------------------------------------------
@@ -123,24 +144,17 @@ class WatwaDataPreprocessor(DataPreprocessor):
 
     def _parse_pml_features(self, instance):
         """
-        Parse the PML file for this instance and extract per-switch-point features.
-
-        Returns list of dicts, one per switch-point, with:
-          time_ns_high, time_ns_low, power_nw_high, power_nw_low,
-          energy_high, energy_low, loop_bound, is_uart,
-          position_norm, transition_costs
+        Parse the PML file and extract per-switch-point features.
         """
         import os
 
-        pml_path = os.path.join(instance["program_dir"], "build", "app.c.pml")
+        pml_path = os.path.join(instance["program_dir"], "app.c.pml")
 
         with open(pml_path, "r") as f:
             raw = f.read()
 
-        # PML files contain multiple YAML documents separated by "---"
         docs = [d for d in yaml.safe_load_all(raw) if d is not None]
 
-        # Find the PSTG document
         pstg_doc = None
         for doc in docs:
             if "pstgs" in doc:
@@ -150,19 +164,18 @@ class WatwaDataPreprocessor(DataPreprocessor):
         if pstg_doc is None:
             raise ValueError(f"No PSTG found in {pml_path}")
 
-        pstg       = pstg_doc["pstgs"][0]
-        cc_alts    = pstg.get("cc-alternatives", [])
-        edges      = {e["index"]: e for e in pstg["edges"]}
-        nodes      = {n["index"]: n for n in pstg["nodes"]}
-        flowfacts  = self._parse_flowfacts(docs)
+        pstg      = pstg_doc["pstgs"][0]
+        cc_alts   = pstg.get("cc-alternatives", [])
+        edges     = {e["index"]: e for e in pstg["edges"]}
+        nodes     = {n["index"]: n for n in pstg["nodes"]}
+        flowfacts = self._parse_flowfacts(docs)
 
-        s = len(cc_alts)
+        s     = len(cc_alts)
         feats = []
 
         for pos, alt_group in enumerate(cc_alts):
-            alternatives = alt_group["alternatives"]   # list of 3 dicts
+            alternatives = alt_group["alternatives"]
 
-            # For each alternative, compute total transition cost
             transition_costs = []
             for alt in alternatives:
                 total_time  = 0.0
@@ -177,43 +190,41 @@ class WatwaDataPreprocessor(DataPreprocessor):
                     "power_nw" : total_power,
                 })
 
-            # Get energy costs of the associated PSTG nodes (High and Low freq)
             cc_node_indices = alt_group["cc-nodes"]
-            time_high, time_low, pwr_high, pwr_low = 0.0, 0.0, POWER_HIGH_NW, POWER_LOW_NW
+            time_high, time_low = 0.0, 0.0
+            pwr_high, pwr_low   = POWER_HIGH_NW, POWER_LOW_NW
             is_uart = False
 
             for ni in cc_node_indices:
                 n = nodes.get(ni, {})
                 c = n.get("costs", {})
                 devices = n.get("devices", [])
-                # 0 = CpuHighFreq, 1 = CpuLowFreq
                 if 0 in devices:
                     time_high += c.get("time_ns", 0.0)
-                    pwr_high   = c.get("power_nW", POWER_HIGH_NW)
-                    # UART nodes have non-zero costs at both freqs
+                    if c.get("power_nW"):
+                        pwr_high = c.get("power_nW", POWER_HIGH_NW)
                     if c.get("time_ns", 0.0) > 0:
                         is_uart = True
                 if 1 in devices:
-                    time_low  += c.get("time_ns", 0.0)
-                    pwr_low    = c.get("power_nW", POWER_LOW_NW)
+                    time_low += c.get("time_ns", 0.0)
+                    if c.get("power_nW"):
+                        pwr_low = c.get("power_nW", POWER_LOW_NW)
 
             energy_high = time_high * pwr_high
             energy_low  = time_low  * pwr_low
-
-            # Loop bound: look up flowfact for enclosing loop
-            loop_bound = self._get_loop_bound(flowfacts, cc_node_indices, nodes)
+            loop_bound  = self._get_loop_bound(flowfacts, cc_node_indices, nodes)
 
             feats.append({
-                "time_ns_high"      : time_high,
-                "time_ns_low"       : time_low,
-                "power_nw_high"     : pwr_high,
-                "power_nw_low"      : pwr_low,
-                "energy_high"       : energy_high,
-                "energy_low"        : energy_low,
-                "loop_bound"        : loop_bound,
-                "is_uart"           : is_uart,
-                "position_norm"     : pos / max(s - 1, 1),
-                "transition_costs"  : transition_costs,
+                "time_ns_high"     : time_high,
+                "time_ns_low"      : time_low,
+                "power_nw_high"    : pwr_high,
+                "power_nw_low"     : pwr_low,
+                "energy_high"      : energy_high,
+                "energy_low"       : energy_low,
+                "loop_bound"       : loop_bound,
+                "is_uart"          : is_uart,
+                "position_norm"    : pos / max(s - 1, 1),
+                "transition_costs" : transition_costs,
             })
 
         return feats
@@ -233,36 +244,31 @@ class WatwaDataPreprocessor(DataPreprocessor):
 
 
     def _get_loop_bound(self, flowfacts, cc_node_indices, nodes):
-        """
-        Try to find the loop bound for the loop enclosing these cc-nodes.
-        Falls back to 1 if not found.
-        """
-        # cc-nodes often map to cc_loopbegin/cc_loopend blocks
-        # which share the loop name with the enclosing loop condition block
+        """Find loop bound for the loop enclosing these cc-nodes."""
         for ni in cc_node_indices:
-            n = nodes.get(ni, {})
+            n         = nodes.get(ni, {})
             pabb_name = str(n.get("pabb", ""))
-            # Check each flowfact for a matching loop name
             for loop_name, bound in flowfacts.items():
                 if loop_name in pabb_name or pabb_name in loop_name:
                     return bound
         return 1
 
+
     # ------------------------------------------------------------------
-    # Unused abstract method stubs (required by base class)
+    # Unused abstract method stubs
     # ------------------------------------------------------------------
 
     def get_ff_fixed_dataset(self, data):
         raise NotImplementedError(
-            "ff_fixed model not implemented for WatwaOS. Use inst_encoder."
+            "ff_fixed not implemented for WatwaOS. Use inst_encoder."
         )
 
     def get_ff_invariant_dataset(self, data):
         raise NotImplementedError(
-            "ff_invariant model not implemented for WatwaOS. Use inst_encoder."
+            "ff_invariant not implemented for WatwaOS. Use inst_encoder."
         )
 
     def get_set_invariant_dataset(self, data):
         raise NotImplementedError(
-            "set_invariant model not implemented for WatwaOS. Use inst_encoder."
+            "set_invariant not implemented for WatwaOS. Use inst_encoder."
         )
