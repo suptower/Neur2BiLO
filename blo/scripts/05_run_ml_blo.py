@@ -369,6 +369,11 @@ def get_instance(cfg, args, blo):
         instance_scaled = blo.read_instance(cfg, args.dr_dataset, args.inst_idx, scale=True)
         instance_unscaled = blo.read_instance(cfg, args.dr_dataset, args.inst_idx, scale=False)
 
+    elif "watwa" in args.problem:
+        program_dir = cfg.program_dirs[args.inst_idx % len(cfg.program_dirs)]
+        instance_scaled = blo.read_instance(cfg, program_dir, scale=True)
+        instance_unscaled = blo.read_instance(cfg, program_dir, scale=False)
+
     return instance_scaled, instance_unscaled
 
 
@@ -405,6 +410,9 @@ def get_problem_str(cfg, args, blo):
     elif "dr" in args.problem:
         problem_str += f"n-{args.dr_n}_"
         problem_str += f"dr-{args.dr_dataset}_"
+        problem_str += f"i-{args.inst_idx}"
+
+    elif "watwa" in args.problem:
         problem_str += f"i-{args.inst_idx}"
 
     else: 

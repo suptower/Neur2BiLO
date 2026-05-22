@@ -258,6 +258,11 @@ class SetInstanceEncodingNetwork(nn.Module):
                 pred_4 = torch.sum(torch.mul(pred_per_decision, p[:,3,:]), dim=1)
                 out = pred_1 + pred_2 + pred_3 + pred_4
 
+
+        # for watwa: direct energy prediction, mean over switch-points
+        if "watwa" in self.problem:
+            out = torch.mean(pred_per_decision, dim=1)
+
         return out
 
 
