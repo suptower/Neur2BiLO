@@ -34,21 +34,8 @@ RUN python -m pip install torch \
     --index-url https://download.pytorch.org/whl/cu121
 
 # Install remaining dependencies
-# numpy<2.0  : pao uses np.NINF/np.PINF removed in NumPy 2.0
-# pyutilib   : required by pao (only available for Python >=3.11)
-RUN python -m pip install \
-        "numpy<2.0" \
-        packaging \
-        pyutilib \
-        gurobipy \
-        scikit-learn \
-        pyomo \
-        pao \
-        pandas \
-        scipy \
-        matplotlib \
-        gurobi-machinelearning \
-        pyyaml
+# Note: dependencies have been frozen and put in requirements.txt for reproducibility
+RUN python -m pip install -r requirements.txt
 
 # Create required data directories
 RUN mkdir -p data/kp/random_search \
