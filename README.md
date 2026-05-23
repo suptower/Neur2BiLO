@@ -1,150 +1,122 @@
-# Neur2BiLO: Neural Bilevel Optimization
+# WatwaOS Adapter for Neur2BiLO
 
+This directory contains the integration of the [WatwaOS](https://gitos.rrze.fau.de/i4/openaccess/watwaos) static energy optimizer into the [Neur2BiLO](https://github.com/khalil-research/Neur2BiLO) bilevel optimization framework. The goal is to accelerate the WatwaOS optimizer using a neural network that learns to predict optimal device configuration scenarios, reducing the number of ILP solves from $3^s$ to a small constant.
 
-Implementation of Neur2BiLO, an efficient learning-based algorithm for mixed-integer (non-)linear bilevel optimization.  Reference below.
- - \[1\] Dumouchelle, J., Julien, E., Kurtz, J., & Khalil, E. B. Neur2BiLO: Neural Bilevel Optimization.  *The Thirty-eighth Annual Conference on Neural Information Processing Systems (NeurIPS)*, 2024. [\[Paper\]](https://openreview.net/pdf?id=T5Xb0iGCCv) [\[Website\]](https://khalil-research.github.io/Neur2BiLO/)
-   
+## Background
 
-## Notes
- - All models and results have been included in the data directories.
- - To reproduce tables from the paper, use the corresponding notebook in the `notebook/` directory.
- - To rerun commands, see `commands_to_run_all.md` and reference the general instructions below.
- - DNDP is in a self-contained Jupyter Notebook and will be uploaded soon.
+WatwaOS takes a C program and a device configuration file as input and finds the optimal static clock frequency assignment for each basic block, minimizing total energy consumption. Internally, it models the program as a Power State Transition Graph (PSTG) and solves an ILP for every possible configuration scenario. The number of scenarios grows exponentially with the number of IO-intensive loops in the program, making exhaustive enumeration infeasible for larger programs.
 
-   
-  
-# How to Run the Code
+This adapter formulates the problem as a bilevel optimization problem and trains a neural network (using Neur2BiLO) to predict which configuration scenario is likely optimal, without evaluating all of them.
 
-## A 1-D Knapsack Example
+## Bilevel Formulation
 
-This is an example of running everything for a 1-D knapsack problem (`kp`).  Note that Gurobi 11.0 is required.  
+The problem has a natural leader-follower structure:
 
-#### Initial Commands
-0. Initialize directories for the knapsack problem.
-   ```
-   python -m blo.scripts.00_initialize_directories
-   ```
-1. Initializing the problem (a python dictionary) based on `blo/params.py`.
-   ```
-   python -m blo.scripts.01_initialize_problem --problem kp
-   ```
+- **Leader** (neural network): selects a configuration decision $x \in \{0, 1, 2\}^s$ for each of the $s$ configuration switch points in the program, where $0$ = no frequency change, $1$ = switch to low frequency, $2$ = switch to high frequency.
+- **Follower** (WatwaOS ILP): given the leader's decision, finds the optimal energy-minimizing flow through the PSTG.
 
+The total number of feasible scenarios is $3^s$, where each UART/IO loop contributes 2 switch points.
 
-#### End-to-end ML pipeline
-Below is the list of commands to run the NN-based approximation.
-
-2. Generating the data for training.
-   ```
-   python -m blo.scripts.02_generate_data --problem kp --n_procs N
-   ```
-3. Training the default model config and storing it.  For each model `--model_type`, see the above sections.  Arguments for the ml model can be modified here as well. Random search over model parameters can optionally be done as well.  See Appendix for details.
-   ```
-   python -m blo.scripts.03_train_nn --problem kp --model_type inst_encoder
-   python -m blo.scripts.04_get_best_nn_rs --problem kp --model_type inst_encoder
-   ```
-4. Solving the ML-based surrogate optimization problem.  Important arguements:
-   - Problem-specific arguments such as the number of items in the knapsack, `n`, are given by `--kp_n n`.
-   - To change surrogate model between the lower and upper level, the argument `--approx_type {lower,upper}` can be used.
-   - To change the type of value function correction the argument `--vf_constr_type {slack,dampening,none}` can be use.  If slack is used, then the coefficient can also be change (`--slack_obj_coef`)
-   ```
-   python -m blo.scripts.05_run_ml_blo --problem kp --model_type inst_encoder
-   ```
-
-#### Baseline: Knapsack-specific greedy surrogate model
-6. Run the greedy surrogate optimization
-   ```
-   python -m blo.scripts.05_run_ml_blo --problem kp --model_type greedy --vf_constr_type none
-   ```
-
-#### Baseline: Running the Bilevel Solver from [Fischetti, 2016] [https://msinnl.github.io/pages/bilevel.html]
-7. Initializing the bilevel optimization solver (https://msinnl.github.io/pages/bilevel.html).  Not that this only needs to be done once. 
-   ```
-   bash blo/baselines/blo_solver/solver/make_cplex_shared.sh
-   ```
-
-8. Run the bilevel optimization solver.  Note that addition problem arguments, such as `--kp_n n`, can also be modified here.
-   ```
-   python -m blo.scripts.06_run_blo_solver --problem kp
-   ```
-   For a new problem, `p`, this will need to be done by adding `blo/blo_solver/p.py` to write the problem to `.mps` and `.aux` files.
-   
-Notes:  
-- CPLEX 12.7 is required for the bilevel solver. 
-- Dynamic libraries for CPLEX (`libconcert.so`, `libcplex.so`,  `libilocplex.so`) are required to be in the root directory of the repo (see https://msinnl.github.io/pages/bilevel.html).  I.e., what is done in 7.
-- This assumes the bilevel solver is located in `./blo/baselines/blo_solver/solver/` (should be done by default).
-- The license file for the bilevel solver (`bilevel.license`) must be in the root directory  (should be done by default).
-
-
-# Contributing & Making Additions:
-
-### Adding New Benchmarks
-In order to add a new benchmark problem, `p`, the following files need to be added:
-- `blo/p.py`: To implement solving the follower problem and sampling/reading instances.
-- `data_manager/p.py`: To implement sampling decisions and collect raw features.  Note all parallelization is handled by the base class.
-- `data_preprocessor/p.py`: To implement features preprocessing for each model based on the raw features.
-- `approximator/p.py`: To implement the upper/lower level surrogates and any other problem-specific functions (for example, greedy in the knapsack case).
-- `baselines/blo_solver/p.py`: To implement writing the problem to the `.mps` and `.aux` files and calling the bilevel solver.
-- `utils/p.py`: General utilities and getting paths to read/write to.
-
-Note that the `__init__.py` files will also need to be edited slightly.  Additionally, problem information, such as instance sizes, # of samples, etc, should be added as a dictionary to `blo/params.py`.
-
-### Adding New ML Models
-How to add more ML models.  This will need to be done for every problem `p`.
-- To add new models, simply add them to `blo/models/models.py`.
-Note in most cases, changing `blo/data_preprocessing/p.py` and `blo/approximations/p.py` will need to be modified to preprocess data and modify the approximations accordingly.  In some cases, such as new features that need to be computed, such as heuristic/greedy solutions or features derived from problem information, should be added in `blo/data_managers/p.py` and `blo/blo/p.py`.
-
-### Adding/Modifying Features
-To add/modify features for problem `p`, simply edit `blo/data_preprocessing/p.py` and `blo/approximations/p.py` to include changes. 
-
-
-
-
-# Reference
-
-Please cite our work if you find our code/paper useful to your work. 
+## File Overview
 
 ```
-@inproceedings{
-  dumouchelle2024neurbilo,
-  title={Neur2Bi{LO}: Neural Bilevel Optimization},
-  author={Justin Dumouchelle and Esther Julien and Jannis Kurtz and Elias Boutros Khalil},
-  booktitle={The Thirty-eighth Annual Conference on Neural Information Processing Systems},
-  year={2024},
-}
+blo/blo/watwa.py                  Core bilevel problem class
+blo/data_manager/watwa.py         Data generation and scenario sampling
+blo/data_preprocessor/watwa.py    Feature extraction from PML files
+blo/approximator/watwa.py         Gurobi surrogate model with embedded NN
+blo/utils/watwa.py                Path utilities
 ```
 
+The following existing files were also extended:
 
-## Benchmark Instances and References
+```
+blo/blo/__init__.py               Added WatwaOS factory entry
+blo/data_manager/__init__.py      Added WatwaOS factory entry
+blo/data_preprocessor/__init__.py Added WatwaOS factory entry
+blo/approximator/__init__.py      Added WatwaOS factory entry
+blo/utils/__init__.py             Added WatwaOS factory entry
+blo/params.py                     Added watwa_small and watwa_large configs
+blo/models/models.py              Added watwa branch in forward()
+blo/scripts/05_run_ml_blo.py      Added get_problem_str and get_instance for watwa
+```
 
-If using any of the benchmark problems/instances from our paper, please cite the appropriate references.  
+## Data Generation (WatwaOS required)
 
-### Knapsack Interdiction Problem
-- Reference: Yen Tang, Jean-Philippe P Richard, and J Cole Smith. A class of algorithms for mixed-integer bilevel min–max optimization. *Journal of Global Optimization*, 66:225–262, 2016.
-- Link to instances: [https://web.archive.org/web/20220121032905/http://jcsmith.people.clemson.edu/Test_Instances_files/BKPIns.zip](https://web.archive.org/web/20220121032905/http://jcsmith.people.clemson.edu/Test_Instances_files/BKPIns.zip)
-- Note we provide these instances and instances with 100 items in the MibS input file format in `data/kp/solver_instances/`.  
+Training data is generated by running WatwaOS on a set of C programs. Each program must have the following structure:
 
-### Critical Node Problem/Game
-- Reference: Gabriele Dragotto, Amine Boukhtouta, Andrea Lodi, and Mehdi Taobane. The critical
-node game, 2023.
-- Link to instances: [https://github.com/ds4dm/CNG-Instances](https://github.com/ds4dm/CNG-Instances)
-- Note that the instances used in this work are contained in the data directory that differ from those at the above link but were randomly generated using the same procedure.  We provide the MibS input file format instances used in our experiments in `data/cng/solver_instances/`.  
+```
+programs/
+  stage1/
+      optimize-result.json
+      app.c.pml
+      gurobi-model-*.lp
+```
 
-### Donor Recipient Problem
-- Reference: Shraddha Ghatkar, Ashwin Arulselvan, and Alec Morton. Solution techniques for bi-level knapsack problems. *Computers & Operations Research*, 159:106343, 2023.
-- Link to instances: [https://github.com/ashwin-1983/DR-BKP/](https://github.com/ashwin-1983/DR-BKP/)
-- Note that if using these instances with our code, they will need to be downloaded, unzipped, and moved to `data/dr/DR-BKP-main/`.
+The `optimize-result.json` contains the energy and time for every configuration scenario. The `app.c.pml` contains the PSTG structure used for feature extraction.
 
-### Discrete Network Design Problem
-- Reference: David Rey. Computational benchmarking of exact methods for the bilevel discrete network design problem. *Transportation Research Procedia*, 47:11–18, 2020.
-- Link to instances: [https://github.com/davidrey123/DNDP/](https://github.com/davidrey123/DNDP/)
+## Offline Training (no WatwaOS required)
 
+Once the data is generated, training can be done on a separate machine (e.g. a GPU workstation) without WatwaOS installed. Copy the program directories to the training machine and update `program_dirs` in `blo/params.py` accordingly.
 
+The `read_instance` function in `blo/blo/watwa.py` automatically detects whether pre-generated data exists and skips the WatwaOS pipeline if so.
 
+## Running the Pipeline
 
-## Machine Learning Baselines
+Add your program directories to `blo/params.py` under `watwa_small` or `watwa_large`, then run:
 
-### Input Supermodular Neural Network
-- Reference: Bo Zhou, Ruiwei Jiang, and Siqian Shen. "Learning to solve bilevel programs with binary tender." *The Twelfth International Conference on Learning Representations*, 2024.
-- Link to Full Repository: [https://github.com/bozlamberth/LearnBilevel](https://github.com/bozlamberth/LearnBilevel)
+```bash
+# 1. Initialize directories
+python -m blo.scripts.00_initialize_directories --problem watwa_small
 
+# 2. Initialize problem
+python -m blo.scripts.01_initialize_problem --problem watwa_small
 
+# 3. Generate training data
+python -m blo.scripts.02_generate_data --problem watwa_small --n_procs 4
+
+# 4. Train neural network
+python -m blo.scripts.03_train_nn --problem watwa_small --model_type inst_encoder
+
+# 5. Select best model
+python -m blo.scripts.04_get_best_nn_rs --problem watwa_small --model_type inst_encoder
+
+# 6. Run surrogate optimization
+python -m blo.scripts.05_run_ml_blo --problem watwa_small --model_type inst_encoder \
+    --inst_idx 0 --approx_type upper
+```
+
+## Features
+
+The neural network receives the following features per switch point, extracted from the PML file:
+
+| Feature | Description |
+|---|---|
+| `time_ns_high` | Execution time at high frequency |
+| `time_ns_low` | Execution time at low frequency |
+| `power_nw_high` | Power consumption at high frequency |
+| `power_nw_low` | Power consumption at low frequency |
+| `energy_high` | Energy at high frequency (time × power) |
+| `energy_low` | Energy at low frequency (time × power) |
+| `loop_bound` | Loop iteration count from PML flowfacts |
+| `is_uart` | Whether this switch point involves a UART syscall |
+| `position_norm` | Normalized position in the program (0 to 1) |
+| `n_switch_points` | Total number of switch points in the program |
+
+Decision-dependent features (one-hot encoding of $x[i]$ and transition costs) are concatenated with the instance embedding before the final value prediction.
+
+## Configuration
+
+The `watwa_small` and `watwa_large` configurations in `blo/params.py` control which programs are used for training and how many samples are generated per program. Update `program_dirs` to point to your program directories before running the pipeline.
+
+## Docker
+
+A `Dockerfile` is provided for running the training on a machine without WatwaOS and with the required Python environment. A valid gurobi license is needed. Build and run with:
+
+```bash
+docker build --network=host -t neur2bilo-watwa .
+
+docker run --gpus all -it \
+  -v /path/to/gurobi.lic:/root/gurobi.lic \
+  -v /path/to/app:/app \
+  neur2bilo-watwa
+```

@@ -1,2 +1,8 @@
 __pycache__/
 *.py[cod]
+*.pt
+*.pkl
+*.aux
+*.log
+*.out
+*.mps

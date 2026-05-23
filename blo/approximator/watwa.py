@@ -72,33 +72,24 @@ class WatwaApproximator(Approximator):
         Gurobi minimizes the NN output over x in {0,1,2}^s (one-hot encoded).
         """
         grb_model = gp.Model()
-
         s = self.s
 
-        # --- Leader variables: one-hot over {0,1,2} per switch-point ---
+        # Leader variables: one-hot over {0,1,2} per switch-point
         x_oh = grb_model.addVars(s, 3, vtype=gp.GRB.BINARY, name="x_oh")
-
-        # Each switch-point must have exactly one active class
         for i in range(s):
             grb_model.addConstr(
                 gp.quicksum(x_oh[i, c] for c in range(3)) == 1,
                 name=f"one_hot_{i}"
             )
-
         grb_model._x_oh = x_oh
 
-        # --- Value function variable ---
-        y_valuefun = grb_model.addMVar(
-            (1,), lb=-gp.GRB.INFINITY, name="y_vf"
-        )
+        # Value function variable
+        y_valuefun = grb_model.addMVar((1,), lb=-gp.GRB.INFINITY, name="y_vf")
 
-        # --- Build feature matrix for NN ---
-        x_withfeatures = self.get_grb_features_with_x(x_oh, grb_model)
+        # Embed NN directly – no get_grb_features_with_x needed
+        self.embed_inst_encoder(y_valuefun, grb_model)
 
-        # --- Embed NN ---
-        self.embed_net(x_withfeatures, y_valuefun, grb_model)
-
-        # --- Objective: minimize predicted energy ---
+        # Objective: minimize predicted energy
         grb_model.setObjective(y_valuefun[0], gp.GRB.MINIMIZE)
 
         return grb_model
@@ -245,37 +236,29 @@ class WatwaApproximator(Approximator):
 
         return costs
 
-    def embed_inst_encoder(self, x_withfeatures, y_valuefun, grb_model):
-        """
-        Override embed_inst_encoder for WatwaOS.
-
-        Architecture:
-        1. instance_decision_embedder(inst_feats) => per-switch-point embedding
-        2. aggregate + final_instance_embedder    => 32-dim instance vector (PyTorch, fixed)
-        3. value_predictor([dec_feats, inst_emb]) => energy prediction (MIP)
-        """
+    def embed_inst_encoder(self, y_valuefun, grb_model):
         import torch
 
-        s       = self.s
-        n_dec   = 5    # decision feature dimension
-        n_inst  = 10   # instance feature dimension
+        s     = self.s
+        n_dec = 5
 
-        # --- Step 1-3: compute instance embedding via PyTorch (fixed constant) ---
-        inst_feats_np = self._get_instance_features_np()  # (s, 10)
+        x_oh = grb_model._x_oh
+
+        # Compute instance embedding via PyTorch (fixed constant)
+        inst_feats_np = self._get_instance_features_np()
         inst_feats_t  = torch.tensor(inst_feats_np, dtype=torch.float32).unsqueeze(0)
-        # shape: (1, s, 10)
 
         with torch.no_grad():
             emb = self.net.instance_decision_embedder(inst_feats_t)
             emb = self.net.aggregate(emb, self.net.agg_type)
             emb = self.net.final_instance_embedder(emb)
 
-        # shape: (1, 1, 32) => flatten to (32,)
         inst_embedding = emb.detach().cpu().numpy().reshape(-1)
-        inst_emb_dim   = inst_embedding.shape[0]  # 32
+        inst_emb_dim   = inst_embedding.shape[0]
 
-        # --- Step 4: build MIP input features per switch-point ---
-        # Input to value_predictor: [dec_features (5), inst_embedding (32)] = 37
+        trans_costs = self._get_transition_costs_np()
+
+        # Build input to value_predictor: [dec_features (5), inst_embedding (32)]
         x_pred = grb_model.addMVar(
             (s, n_dec + inst_emb_dim),
             vtype=gp.GRB.CONTINUOUS,
@@ -283,51 +266,29 @@ class WatwaApproximator(Approximator):
             name="x_pred"
         )
 
-        x_oh = grb_model._x_oh
-
-        trans_costs = self._get_transition_costs_np()  # (s, 3, 2)
-
         for i in range(s):
-            # Decision features: one-hot (3) + transition costs (2)
             for c in range(3):
-                grb_model.addConstr(x_pred[i, c] == x_oh[i, c], name=f"dec_oh_{i}_{c}")
-
+                grb_model.addConstr(x_pred[i, c] == x_oh[i, c],
+                                    name=f"dec_oh_{i}_{c}")
             grb_model.addConstr(
                 x_pred[i, 3] == gp.quicksum(
-                    x_oh[i, c] * trans_costs[i, c, 0] for c in range(3)
-                ), name=f"trans_t_{i}"
-            )
+                    x_oh[i, c] * trans_costs[i, c, 0] for c in range(3)),
+                name=f"trans_t_{i}")
             grb_model.addConstr(
                 x_pred[i, 4] == gp.quicksum(
-                    x_oh[i, c] * trans_costs[i, c, 1] for c in range(3)
-                ), name=f"trans_p_{i}"
-            )
-
-            # Instance embedding (constant)
+                    x_oh[i, c] * trans_costs[i, c, 1] for c in range(3)),
+                name=f"trans_p_{i}")
             for j in range(inst_emb_dim):
                 grb_model.addConstr(
                     x_pred[i, n_dec + j] == inst_embedding[j],
-                    name=f"inst_emb_{i}_{j}"
-                )
+                    name=f"inst_emb_{i}_{j}")
 
-        # --- Step 5: embed value_predictor as MIP ---
         y_pred = grb_model.addMVar(
-            (s, 1),
-            vtype=gp.GRB.CONTINUOUS,
-            lb=-gp.GRB.INFINITY,
-            name="y_pred"
-        )
+            (s, 1), vtype=gp.GRB.CONTINUOUS, lb=-gp.GRB.INFINITY, name="y_pred")
 
         for i in range(s):
-            add_predictor_constr(
-                grb_model,
-                self.net.value_predictor,
-                x_pred[i, :],
-                y_pred[i]
-            )
+            add_predictor_constr(grb_model, self.net.value_predictor,
+                                x_pred[i, :], y_pred[i])
 
-        # Aggregate predictions to scalar energy estimate
         grb_model.addConstr(
-            y_valuefun[0] == y_pred[:, 0].sum() / s,
-            name="set_vf"
-        )
+            y_valuefun[0] == y_pred[:, 0].sum() / s, name="set_vf")

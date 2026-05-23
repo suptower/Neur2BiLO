@@ -187,9 +187,9 @@ class Approximator(ABC):
             grb_model.addConstr(y_valuefun == y_pred, name="set_vf")
 
 
-    def embed_inst_encoder(self, x_withfeatures, y_valuefun, grb_model):
-        """ Embeds instance encoder model.  x_withfeatures should already contain precomputed instance features. """
-        n_embed = x_withfeatures.shape[0]
+    def embed_net(self, x_withfeatures, y_valuefun, grb_model):
+        """Override embed_net to skip x_withfeatures for watwa."""
+        self.embed_inst_encoder(y_valuefun, grb_model)
 
         # value function prediction
         y_pred = grb_model.addMVar((self.y_pred_dim * n_embed,1), vtype=gp.GRB.CONTINUOUS, lb=-gp.GRB.INFINITY, name="y_pred")
