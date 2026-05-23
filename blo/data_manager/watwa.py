@@ -38,10 +38,6 @@ class WatwaDataManager(DataManager):
     def _solve_lower_level_mp(self, x, instance, inst_id, mp_time, mp_count, n_samples):
         """
         Obtain the follower objective for a given leader decision x.
-
-        x is a ternary vector in {0,1,2}^s where s = number of switch points.
-        The follower objective (energy) is looked up directly from the
-        pre-computed WatwaOS scenario results.
         """
         time_ = time.time()
 
@@ -69,12 +65,6 @@ class WatwaDataManager(DataManager):
     def _sample_random_x(self, instance, X_hash=None):
         """
         Sample a random leader decision x ∈ {0,1,2}^s.
-
-        s = instance['k'] = number of configuration switch points.
-        Each position is independently sampled from {0, 1, 2}.
-
-        Only samples scenarios that exist in the pre-computed results
-        to avoid out-of-distribution decisions.
         """
         scenarios = instance["scenarios"]
         all_keys = list(scenarios.keys())

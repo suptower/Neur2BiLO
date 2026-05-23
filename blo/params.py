@@ -434,8 +434,7 @@ dr_30_hard = SimpleNamespace(
 # Small configuration: Stage 1-4 programs (2-8 switch-points)
 # suitable for initial training and debugging
 watwa_small = SimpleNamespace(
-    # paths to program directories, each containing a Makefile and src/app.c
-    # TODO: update these paths to match the actual location on your system
+    # paths to program directories
     program_dirs = [
         './programs/stage1',   # 1x Compute + 1x UART  -> s=2,  9 scenarios
         './programs/stage2',   # 2x Compute + 1x UART  -> s=2,  9 scenarios

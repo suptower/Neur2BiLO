@@ -12,13 +12,8 @@ from .approximator import Approximator
 class WatwaApproximator(Approximator):
     """
     Approximator for the WatwaOS bilevel problem.
-
-    Leader decision: x ∈ {0,1,2}^s  (ternary, one value per switch-point)
-    Follower objective: total energy consumption (minimized)
-
-    Uses Upper-Level Approximation (NN_u):
-      The network directly predicts F(x, y*(x)) = total energy,
-      given the switch-point features and the leader decision x.
+    The leader's decision is a ternary choice per switch-point (0, 1, or 2).
+    The follower's response is the optimal energy given the leader's choice.
     """
 
     def __init__(self, args, cfg, blo, net, instance):
@@ -74,11 +69,7 @@ class WatwaApproximator(Approximator):
         Build Gurobi surrogate model using Upper-Level Approximation (NN_u).
 
         The NN predicts F(x, y*(x)) = total energy directly.
-        Gurobi minimizes the NN output over x ∈ {0,1,2}^s.
-
-        Leader variables: one-hot encoding of ternary x
-          x_oh[i,0], x_oh[i,1], x_oh[i,2] ∈ {0,1}  for each switch-point i
-          with sum constraint: x_oh[i,0] + x_oh[i,1] + x_oh[i,2] == 1
+        Gurobi minimizes the NN output over x in {0,1,2}^s (one-hot encoded).
         """
         grb_model = gp.Model()
 
@@ -259,9 +250,9 @@ class WatwaApproximator(Approximator):
         Override embed_inst_encoder for WatwaOS.
 
         Architecture:
-        1. instance_decision_embedder(inst_feats) → per-switch-point embedding
-        2. aggregate + final_instance_embedder    → 32-dim instance vector (PyTorch, fixed)
-        3. value_predictor([dec_feats, inst_emb]) → energy prediction (MIP)
+        1. instance_decision_embedder(inst_feats) => per-switch-point embedding
+        2. aggregate + final_instance_embedder    => 32-dim instance vector (PyTorch, fixed)
+        3. value_predictor([dec_feats, inst_emb]) => energy prediction (MIP)
         """
         import torch
 
@@ -279,7 +270,7 @@ class WatwaApproximator(Approximator):
             emb = self.net.aggregate(emb, self.net.agg_type)
             emb = self.net.final_instance_embedder(emb)
 
-        # shape: (1, 1, 32) → flatten to (32,)
+        # shape: (1, 1, 32) => flatten to (32,)
         inst_embedding = emb.detach().cpu().numpy().reshape(-1)
         inst_emb_dim   = inst_embedding.shape[0]  # 32
 
