@@ -68,6 +68,11 @@ class DataManager(ABC):
             X_hash = set()
             for i in range(self.cfg.n_samples_per_inst):
                 x = self._sample_random_x(instance, X_hash)
+                
+                # If x is None, then we have sampled all possible scenarios for this instance.  Skip.
+                if x is None:
+                    continue
+
                 tr_procs_to_run.append((instance, inst_id, x))
 
         # sample upper-level decisions for each validation instance
@@ -77,6 +82,9 @@ class DataManager(ABC):
             X_hash = set()
             for i in range(self.cfg.n_samples_per_inst):
                 x = self._sample_random_x(instance, X_hash)
+                # If x is None, then we have sampled all possible scenarios for this instance.  Skip.
+                if x is None:
+                    continue
                 val_procs_to_run.append((instance, inst_id, x))
 
         print("  Done.")
@@ -92,24 +100,13 @@ class DataManager(ABC):
         mp_time = time.time()
 
         # optional.  Set to true if debugging.  Avoids any anymultiprocessing related issues.
-        debug = False
+        debug = True
         if debug:
             print("Running in debugging mode...")
             for instance, inst_id, x in tr_procs_to_run:
                 res = self._solve_lower_level_mp(x, instance, inst_id, mp_time, mp_count, len(tr_procs_to_run))
-            print("Successfully ran all data collection.  Exiting!")
-            exit()
+                tr_data.append(res)
 
-        pool = Pool(n_procs)
-        
-        for instance, inst_id, x in tr_procs_to_run:
-            res = pool.apply_async(self._solve_lower_level_mp, args=(x, instance, inst_id, mp_time, mp_count, len(tr_procs_to_run)))
-            tr_data.append(res)
-
-        tr_data = list(map(lambda x: x.get(), tr_data))
-
-        pool.close()
-        pool.join()        
 
         tr_time = time.time() - tr_time
 
@@ -125,17 +122,9 @@ class DataManager(ABC):
         mp_count = Manager().Value('i', 0)
         mp_time = time.time()
 
-        pool = Pool(n_procs)
-        
         for instance, inst_id, x in val_procs_to_run:
-            res = pool.apply_async(self._solve_lower_level_mp, args=(x, instance, inst_id, mp_time, mp_count, len(val_procs_to_run)))
+            res = self._solve_lower_level_mp(x, instance, inst_id, mp_time, mp_count, len(val_procs_to_run))
             val_data.append(res)
-
-        val_data = list(map(lambda x: x.get(), val_data))
-
-        pool.close()
-        pool.join()        
-
         val_time = time.time() - val_time
 
         print("  Done.")

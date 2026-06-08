@@ -148,7 +148,7 @@ class WatwaDataPreprocessor(DataPreprocessor):
         """
         import os
 
-        pml_path = os.path.join(instance["program_dir"], "app.c.pml")
+        pml_path = os.path.join(instance["program_dir"], "build", "app.c.pml")
 
         with open(pml_path, "r") as f:
             raw = f.read()

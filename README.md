@@ -74,8 +74,8 @@ python -m blo.scripts.01_initialize_problem --problem watwa_small
 # 3. Generate training data
 python -m blo.scripts.02_generate_data --problem watwa_small --n_procs 4
 
-# 4. Train neural network
-python -m blo.scripts.03_train_nn --problem watwa_small --model_type inst_encoder
+# 4. Train neural network (currently testing batch size 64)
+python -m blo.scripts.03_train_nn --problem watwa_small --model_type inst_encoder --bs 64
 
 # 5. Select best model
 python -m blo.scripts.04_get_best_nn_rs --problem watwa_small --model_type inst_encoder

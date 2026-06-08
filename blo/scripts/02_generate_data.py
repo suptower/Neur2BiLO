@@ -1,5 +1,13 @@
 from argparse import ArgumentParser
 
+import signal, sys
+def handler(sig, frame):
+    import traceback
+    print(f"SIGNAL RECEIVED: {sig}", flush=True)
+    traceback.print_stack(frame)
+    sys.stdout.flush()
+signal.signal(signal.SIGTERM, handler)
+signal.signal(signal.SIGINT, handler)
 from blo.data_manager import factory_dm
 
 

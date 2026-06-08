@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 # ---------------------#
 #   Knapsack Problem   #
@@ -487,4 +488,50 @@ watwa_large = SimpleNamespace(
     # generic parameters
     seed      = 7,
     data_path = './data/',
+)
+
+
+generated_dir = Path('./programs/generated')
+program_dirs  = sorted([str(p) for p in generated_dir.iterdir()
+                        if (p / 'build' / 'optimize-result.json').exists()])
+program_dirs_v1a = [d for d in program_dirs if int(d.split("_")[-1]) < 250]
+program_dirs_v1b = [d for d in program_dirs if int(d.split("_")[-1]) >= 250]
+
+watwa_v1 = SimpleNamespace(
+    program_dirs       = program_dirs, # use all generated programs
+    n_samples_inst     = len(program_dirs),   # alle Programme
+    n_samples_per_inst = 50,                   # 50 Szenarien pro Programm
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)
+
+watwa_v1a = SimpleNamespace(
+    program_dirs       = program_dirs_v1a, # use first 250 generated programs
+    n_samples_inst     = len(program_dirs_v1a),   # alle Programme
+    n_samples_per_inst = 50,                   # 50 Szenarien pro Programm
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)
+
+watwa_v1b = SimpleNamespace(
+    program_dirs       = program_dirs_v1b, # use remaining generated programs
+    n_samples_inst     = len(program_dirs_v1b),   # alle Programme
+    n_samples_per_inst = 50,                   # 50 Szenarien pro Programm
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
 )

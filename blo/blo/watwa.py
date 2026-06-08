@@ -44,8 +44,8 @@ class Watwa(BLO):
             worst_energy: max energy across all scenarios
             k: number of switch points
         """
-        result_path = os.path.join(program_dir, "optimize-result.json")
-        pml_path    = os.path.join(program_dir, "app.c.pml")
+        result_path = os.path.join(program_dir, "build", "optimize-result.json")
+        pml_path    = os.path.join(program_dir, "build", "app.c.pml")
 
         if os.path.exists(result_path) and os.path.exists(pml_path):
             # --- Offline mode: load pre-generated data ---

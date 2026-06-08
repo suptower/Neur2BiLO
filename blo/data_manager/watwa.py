@@ -69,19 +69,25 @@ class WatwaDataManager(DataManager):
         scenarios = instance["scenarios"]
         all_keys = list(scenarios.keys())
 
+        # Always include ideal scenario
+        optimal_key = instance["ideal_scenario"]
+        if X_hash is None or str(list(eval(optimal_key))) not in X_hash:
+            x = list(eval(optimal_key))
+            if X_hash is not None:
+                X_hash.add(str(x))
+            return np.array(x)
+        
+        # Find keys not yet sampled
+        remaining = [k for k in all_keys if str(list(eval(k))) not in X_hash]
+
+        # No new scenarios available for this scenario
+        if not remaining:
+            return None
+
         # Sample a random scenario key from the pre-computed set
-        while True:
-            key = np.random.choice(all_keys)
-            x = list(eval(key))   # e.g. "(2, 0)" -> [2, 0]
-            x_str = str(x)
-
-            if X_hash is None:
-                break
-
-            if x_str not in X_hash:
-                X_hash.add(x_str)
-                break
-
+        key = np.random.choice(remaining)
+        x = list(eval(key))
+        X_hash.add(str(x))
         return np.array(x)
 
 
