@@ -67,27 +67,37 @@ class WatwaDataManager(DataManager):
         Sample a random leader decision x ∈ {0,1,2}^s.
         """
         scenarios = instance["scenarios"]
-        all_keys = list(scenarios.keys())
 
-        # Always include ideal scenario
+        # Always include ideal scenario first
         optimal_key = instance["ideal_scenario"]
-        if X_hash is None or str(list(eval(optimal_key))) not in X_hash:
+        if X_hash is None or optimal_key not in X_hash:
             x = list(eval(optimal_key))
             if X_hash is not None:
-                X_hash.add(str(x))
+                X_hash.add(optimal_key)
             return np.array(x)
-        
-        # Find keys not yet sampled
-        remaining = [k for k in all_keys if str(list(eval(k))) not in X_hash]
 
-        # No new scenarios available for this scenario
-        if not remaining:
+        # Cache shuffled key order once per instance
+        if "_key_order" not in instance:
+            keys = list(scenarios.keys())
+            np.random.shuffle(keys)
+            instance["_key_order"] = keys
+            instance["_key_idx"] = 0
+
+        key_order = instance["_key_order"]
+        idx = instance["_key_idx"]
+
+        # Advance past keys already sampled (handles ideal_key being mid-order)
+        while idx < len(key_order) and key_order[idx] in X_hash:
+            idx += 1
+
+        if idx >= len(key_order):
+            instance["_key_idx"] = idx
             return None
 
-        # Sample a random scenario key from the pre-computed set
-        key = np.random.choice(remaining)
+        key = key_order[idx]
+        instance["_key_idx"] = idx + 1
         x = list(eval(key))
-        X_hash.add(str(x))
+        X_hash.add(key)
         return np.array(x)
 
 

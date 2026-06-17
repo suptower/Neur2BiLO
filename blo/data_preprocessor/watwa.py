@@ -27,9 +27,36 @@ class WatwaDataPreprocessor(DataPreprocessor):
     # ------------------------------------------------------------------
 
     def get_label_scalers(self, data):
-        """Scale labels (energy) globally across all samples."""
-        labels = [s["follower_obj"] for s in data]
-        self.label_scaler = (np.min(labels), np.max(labels))
+        """Scale labels per-instance: each instance's energies normalized to [0,1] independently."""
+        from collections import defaultdict
+        inst_labels = defaultdict(list)
+        for s in data:
+            inst_labels[s["instance"]["program_dir"]].append(s["follower_obj"])
+    
+        # Dict: program_dir -> (min, max) für diese Instanz
+        self.label_scaler = {
+            prog: (min(vals), max(vals))
+            for prog, vals in inst_labels.items()
+        }
+
+    # def get_label_scalers(self, data):
+    #     """Scale labels (energy) globally across all samples."""
+    #     labels = [s["follower_obj"] for s in data]
+    #     self.label_scaler = (np.min(labels), np.max(labels))
+
+    # def get_label_scalers(self, data):
+    #     # Gruppiere nach Instanz, skaliere pro Instanz
+    #     from collections import defaultdict
+    #     inst_labels = defaultdict(list)
+    #     for s in data:
+    #         inst_labels[s["instance"]["program_dir"]].append(s["follower_obj"])
+
+    #     # evt
+    #     # label_norm = (energy - min_energy_this_instance) / (max_energy_this_instance - min_energy_this_instance)
+        
+    #     # Globale Skalierung aber relativ zur optimalen Energie pro Instanz
+    #     labels = [s["follower_obj"] for s in data]
+    #     self.label_scaler = (np.min(labels), np.max(labels))
 
 
     # ------------------------------------------------------------------
@@ -116,8 +143,9 @@ class WatwaDataPreprocessor(DataPreprocessor):
             # Label (scaled)
             label = sample["follower_obj"]
             if self.label_scaler is not None:
-                lo, hi = self.label_scaler
-                label  = (label - lo) / (hi - lo) if hi > lo else 0.0
+                prog = sample["instance"]["program_dir"]
+                lo, hi = self.label_scaler.get(prog, (label, label))
+                label = (label - lo) / (hi - lo) if hi > lo else 0.0
 
             inst_features.append(inst_feats)
             decision_features.append(dec_feats)
@@ -146,6 +174,9 @@ class WatwaDataPreprocessor(DataPreprocessor):
         """
         Parse the PML file and extract per-switch-point features.
         """
+        if "_pml_features" in instance:
+            return instance["_pml_features"]
+
         import os
 
         pml_path = os.path.join(instance["program_dir"], "build", "app.c.pml")
@@ -227,6 +258,7 @@ class WatwaDataPreprocessor(DataPreprocessor):
                 "transition_costs" : transition_costs,
             })
 
+        instance["_pml_features"] = feats
         return feats
 
 

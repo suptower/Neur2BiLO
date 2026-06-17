@@ -510,6 +510,19 @@ watwa_v1 = SimpleNamespace(
     data_path          = './data/',
 )
 
+watwa_v2 = SimpleNamespace(
+    program_dirs       = program_dirs, # use all generated programs
+    n_samples_inst     = len(program_dirs),   # alle Programme
+    n_samples_per_inst = 10000,                   # 100k Szenarien pro Programm
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)
+
 watwa_v1a = SimpleNamespace(
     program_dirs       = program_dirs_v1a, # use first 250 generated programs
     n_samples_inst     = len(program_dirs_v1a),   # alle Programme
