@@ -259,8 +259,12 @@ class WatwaApproximator(Approximator):
         trans_costs = self._get_transition_costs_np()
 
         # Build input to value_predictor: [dec_features (5), inst_embedding (32)]
+        # This is the "own features" block per switch point -- unchanged from
+        # before. own_feat_dim = n_dec + inst_emb_dim (e.g. 5 + 32 = 37).
+        own_feat_dim = n_dec + inst_emb_dim
+
         x_pred = grb_model.addMVar(
-            (s, n_dec + inst_emb_dim),
+            (s, own_feat_dim),
             vtype=gp.GRB.CONTINUOUS,
             lb=-gp.GRB.INFINITY,
             name="x_pred"
@@ -283,6 +287,60 @@ class WatwaApproximator(Approximator):
                     x_pred[i, n_dec + j] == inst_embedding[j],
                     name=f"inst_emb_{i}_{j}")
 
+        # --- NEW: cross-switch-point context (MIP-compatible) ---
+        # For each switch point i, compute the leave-one-out sum of x_pred
+        # over all OTHER switch points j != i, project it through context_proj
+        # (a Linear+ReLU sub-network, embedded via add_predictor_constr just
+        # like value_predictor), and concatenate it with x_pred[i,:] before
+        # the value prediction. This must use the FINAL x_pred (after dec
+        # features + instance embedding are filled in), since context is
+        # defined over the same feature space value_predictor was trained on.
+        value_pred_input_dim = own_feat_dim
+        if getattr(self, "use_context", False) and self.context_proj_grb is not None:
+            context_hidden_dim = self.context_proj_grb_output_dim
+
+            # total sum over all switch points (axis 0), shape (own_feat_dim,)
+            total_sum = x_pred.sum(axis=0)
+
+            context_raw = grb_model.addMVar(
+                (s, own_feat_dim), vtype=gp.GRB.CONTINUOUS,
+                lb=-gp.GRB.INFINITY, name="context_raw"
+            )
+            for i in range(s):
+                grb_model.addConstr(
+                    context_raw[i, :] == total_sum - x_pred[i, :],
+                    name=f"context_raw_{i}"
+                )
+
+            context_proj_out = grb_model.addMVar(
+                (s, context_hidden_dim), vtype=gp.GRB.CONTINUOUS,
+                lb=-gp.GRB.INFINITY, name="context_proj_out"
+            )
+            for i in range(s):
+                add_predictor_constr(
+                    grb_model, self.context_proj_grb,
+                    context_raw[i, :], context_proj_out[i, :]
+                )
+
+            # extended input: [own_features, projected_context]
+            value_pred_input_dim = own_feat_dim + context_hidden_dim
+            x_pred_ext = grb_model.addMVar(
+                (s, value_pred_input_dim), vtype=gp.GRB.CONTINUOUS,
+                lb=-gp.GRB.INFINITY, name="x_pred_ext"
+            )
+            for i in range(s):
+                grb_model.addConstr(
+                    x_pred_ext[i, :own_feat_dim] == x_pred[i, :],
+                    name=f"concat_own_{i}"
+                )
+                grb_model.addConstr(
+                    x_pred_ext[i, own_feat_dim:] == context_proj_out[i, :],
+                    name=f"concat_context_{i}"
+                )
+
+            # use the extended features as input to value_predictor below
+            x_pred = x_pred_ext
+
         y_pred = grb_model.addMVar(
             (s, 1), vtype=gp.GRB.CONTINUOUS, lb=-gp.GRB.INFINITY, name="y_pred")
 
@@ -291,4 +349,4 @@ class WatwaApproximator(Approximator):
                                 x_pred[i, :], y_pred[i])
 
         grb_model.addConstr(
-            y_valuefun[0] == y_pred[:, 0].sum() / s, name="set_vf")
+            y_valuefun[0] == y_pred[:, 0].sum(), name="set_vf")

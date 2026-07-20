@@ -14,12 +14,13 @@ POWER_LOW_NW   =  28_483_000   # CpuLowFreq  power in nW
 
 class WatwaDataPreprocessor(DataPreprocessor):
 
-    def __init__(self, model_type, approx_type, device, cfg=None):
-        self.model_type   = model_type
-        self.approx_type  = approx_type
-        self.device       = device
-        self.cfg          = cfg
-        self.label_scaler = None
+    def __init__(self, model_type, approx_type, device, cfg=None, use_rank_labels=False):
+        self.model_type      = model_type
+        self.approx_type     = approx_type
+        self.device          = device
+        self.cfg             = cfg
+        self.label_scaler    = None
+        self.use_rank_labels = use_rank_labels
 
 
     # ------------------------------------------------------------------
@@ -90,8 +91,8 @@ class WatwaDataPreprocessor(DataPreprocessor):
         n_inst   = 10
         n_dec    = 5
 
-        inst_features, decision_features, decisions, n_decisions, labels = \
-            [], [], [], [], []
+        inst_features, decision_features, decisions, n_decisions, labels, inst_ids = \
+            [], [], [], [], [], []
 
         for sample in data:
             instance = sample["instance"]
@@ -152,18 +153,35 @@ class WatwaDataPreprocessor(DataPreprocessor):
             decisions.append(x_padded)
             n_decisions.append(s)
             labels.append(label)
+            inst_ids.append(sample["inst_id"])
 
+        # Rang-basierte Labels (0=beste, 1=schlechteste) statt normalisierter Energie
+        if self.use_rank_labels:
+            from collections import defaultdict
+            inst_energy_map = defaultdict(dict)
+            for iid, label in zip(inst_ids, labels):
+                if label not in inst_energy_map[iid]:
+                    inst_energy_map[iid][label] = None
+            # Ränge berechnen
+            inst_rank_maps = {}
+            for iid, energy_dict in inst_energy_map.items():
+                sorted_energies = sorted(energy_dict.keys())
+                n = len(sorted_energies)
+                inst_rank_maps[iid] = {
+                    e: i / (n - 1) if n > 1 else 0.0
+                    for i, e in enumerate(sorted_energies)
+                }
+            labels = [inst_rank_maps[iid][label]
+                      for iid, label in zip(inst_ids, labels)]
         inst_features     = self.to_tensor(np.array(inst_features)).to(self.device)
         decision_features = self.to_tensor(np.array(decision_features)).to(self.device)
         decisions         = self.to_tensor(np.array(decisions)).to(self.device)
         n_decisions       = self.to_tensor(np.array(n_decisions)).to(self.device)
         labels            = self.to_tensor(np.array(labels)).to(self.device)
-
-        # Dummy p-Tensor (nicht verwendet, aber Trainings-Skript erwartet 6 tensors)
-        p = self.to_tensor(np.zeros((len(labels), 1))).to(self.device)
-
-        return TensorDataset(inst_features, decision_features, decisions,
-                             n_decisions, p, labels)
+        
+        inst_ids_t = self.to_tensor(np.array(inst_ids, dtype=np.float32)).to(self.device)
+        return TensorDataset(inst_features, decision_features, decisions, 
+                            n_decisions, labels, inst_ids_t)
 
 
     # ------------------------------------------------------------------

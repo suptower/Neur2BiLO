@@ -116,7 +116,13 @@ class Approximator(ABC):
             self.y_pred_dim = net_["value_predictor"].output_dim
 
         elif "inst" in self.model_type:
-            # initialize net
+            use_context = net["params"].get("use_context", False)
+            context_proj_grb = None
+            context_proj_output_dim = None
+            if use_context and "context_proj" in net:
+                context_proj_grb = net["context_proj"].get_grb_net()
+                context_proj_output_dim = net["context_proj"].output_dim
+ 
             self.net = SetInstanceEncodingNetwork(
                 instance_decision_embedder = net["instance_decision_embedder"].get_grb_net(),
                 final_instance_embedder = net["final_instance_embedder"].get_grb_net(),
@@ -124,8 +130,14 @@ class Approximator(ABC):
                 agg_type = net["params"]["inst_agg_type"],
                 use_coef = net["use_coef"],
                 problem = self.args.problem,
-                approx_type = self.args.approx_type,)
-
+                approx_type = self.args.approx_type,
+                use_context = use_context,
+                context_proj = context_proj_grb)
+ 
+            self.context_proj_grb = context_proj_grb
+            self.context_proj_grb_output_dim = context_proj_output_dim
+            self.use_context = use_context
+ 
             # dimensions
             self.inst_embed_dim = net_["final_instance_embedder"].output_dim
             self.input_dim = net_["value_predictor"].input_dim
@@ -187,62 +199,119 @@ class Approximator(ABC):
             grb_model.addConstr(y_valuefun == y_pred, name="set_vf")
 
 
+
     def embed_net(self, x_withfeatures, y_valuefun, grb_model):
-        """Override embed_net to skip x_withfeatures for watwa."""
+        """Override embed_net to skip x_withfeatures for watwa.
+ 
+        If self.use_context is set, computes the leave-one-out context sum
+        per switch point as linear MVar arithmetic, projects it through
+        context_proj (embedded via add_predictor_constr, same as
+        value_predictor), and concatenates it with each switch point's own
+        features before the per-decision value prediction.
+        """
+        n_embed = x_withfeatures.shape[0]
         self.embed_inst_encoder(y_valuefun, grb_model)
-
+ 
+        if getattr(self, "use_context", False) and self.context_proj_grb is not None:
+            feat_dim = x_withfeatures.shape[1]
+            context_hidden_dim = self.context_proj_grb_output_dim
+ 
+            # leave-one-out context sum per switch point: total_sum - own features
+            total_sum = x_withfeatures.sum(axis=0)  # shape (feat_dim,)
+ 
+            context_raw = grb_model.addMVar(
+                (n_embed, feat_dim), vtype=gp.GRB.CONTINUOUS,
+                lb=-gp.GRB.INFINITY, name="context_raw"
+            )
+            for i in range(n_embed):
+                grb_model.addConstr(
+                    context_raw[i, :] == total_sum - x_withfeatures[i, :],
+                    name=f"context_raw_{i}"
+                )
+ 
+            # project context through context_proj (Linear + ReLU)
+            context_proj_out = grb_model.addMVar(
+                (n_embed, context_hidden_dim), vtype=gp.GRB.CONTINUOUS,
+                lb=-gp.GRB.INFINITY, name="context_proj_out"
+            )
+            for i in range(n_embed):
+                add_predictor_constr(
+                    grb_model, self.context_proj_grb,
+                    context_raw[i, :], context_proj_out[i, :]
+                )
+ 
+            # concatenate own features with projected context
+            x_withfeatures_ext = grb_model.addMVar(
+                (n_embed, feat_dim + context_hidden_dim), vtype=gp.GRB.CONTINUOUS,
+                lb=-gp.GRB.INFINITY, name="x_withfeatures_ext"
+            )
+            for i in range(n_embed):
+                grb_model.addConstr(
+                    x_withfeatures_ext[i, :feat_dim] == x_withfeatures[i, :],
+                    name=f"concat_own_{i}"
+                )
+                grb_model.addConstr(
+                    x_withfeatures_ext[i, feat_dim:] == context_proj_out[i, :],
+                    name=f"concat_context_{i}"
+                )
+ 
+            x_withfeatures = x_withfeatures_ext
+ 
         # value function prediction
-        y_pred = grb_model.addMVar((self.y_pred_dim * n_embed,1), vtype=gp.GRB.CONTINUOUS, lb=-gp.GRB.INFINITY, name="y_pred")
-
-        # add predictive constraints for each decision variable
+        y_pred = grb_model.addMVar(
+            (self.y_pred_dim * n_embed, 1), vtype=gp.GRB.CONTINUOUS,
+            lb=-gp.GRB.INFINITY, name="y_pred"
+        )
+ 
         pred_constr = []
         for i in range(n_embed):
-            pred_constr += [add_predictor_constr(grb_model, self.net.value_predictor, x_withfeatures[i,:], y_pred[i])]
-
-        # set value function 
+            pred_constr += [
+                add_predictor_constr(
+                    grb_model, self.net.value_predictor,
+                    x_withfeatures[i, :], y_pred[i]
+                )
+            ]
+ 
         if self.use_coef:
-
             if "kp" in self.args.problem:
-                grb_model.addConstr(y_valuefun == y_pred[:,0] @ self.instance.p, name="set_vf")
-        
+                grb_model.addConstr(y_valuefun == y_pred[:, 0] @ self.instance.p, name="set_vf")
+ 
             elif "cng" in self.args.problem:
                 if self.args.approx_type == "lower":
                     p_1, p_2, p_3 = 0, 0, 0
                     for i in range(self.v):
-                        p_1 += self.instance.a_profit_coefs[i] * (- self.instance.gamma * (1 - grb_model._x[i]) * (1 - y_pred[i,0]))
-                        p_2 += self.instance.a_profit_coefs[i] * (1 - grb_model._x[i]) * y_pred[i,0]
-                        p_3 += self.instance.a_profit_coefs[i] * (1 - self.instance.eta) * grb_model._x[i] * y_pred[i,0]
-     
+                        p_1 += self.instance.a_profit_coefs[i] * (- self.instance.gamma * (1 - grb_model._x[i]) * (1 - y_pred[i, 0]))
+                        p_2 += self.instance.a_profit_coefs[i] * (1 - grb_model._x[i]) * y_pred[i, 0]
+                        p_3 += self.instance.a_profit_coefs[i] * (1 - self.instance.eta) * grb_model._x[i] * y_pred[i, 0]
                     grb_model.addConstr(y_valuefun == p_1 + p_2 + p_3, name="set_vf")
-
+ 
                 elif self.args.approx_type == "upper":
                     p_1, p_2, p_3, p_4 = 0, 0, 0, 0
                     for i in range(self.v):
-                        p_1 += self.instance.d_profit_coefs[i] * (1 - grb_model._x[i]) * (1 - y_pred[i,0])
-                        p_2 += self.instance.d_profit_coefs[i] * self.instance.eta * grb_model._x[i] * y_pred[i,0]
-                        p_3 += self.instance.d_profit_coefs[i] * self.instance.epsilon * grb_model._x[i] * (1 - y_pred[i,0])
-                        p_4 += self.instance.d_profit_coefs[i] * self.instance.delta * (1 - grb_model._x[i]) * y_pred[i,0]
-     
+                        p_1 += self.instance.d_profit_coefs[i] * (1 - grb_model._x[i]) * (1 - y_pred[i, 0])
+                        p_2 += self.instance.d_profit_coefs[i] * self.instance.eta * grb_model._x[i] * y_pred[i, 0]
+                        p_3 += self.instance.d_profit_coefs[i] * self.instance.epsilon * grb_model._x[i] * (1 - y_pred[i, 0])
+                        p_4 += self.instance.d_profit_coefs[i] * self.instance.delta * (1 - grb_model._x[i]) * y_pred[i, 0]
                     grb_model.addConstr(y_valuefun == p_1 + p_2 + p_3 + p_4, name="set_vf")
-
+ 
                 else:
                     raise Exception(f"approx_type={self.args.approx_type} is not implemented for {self.args.problem}")
-
+ 
             elif "dr" in self.args.problem:
                 if self.args.approx_type == "lower":
-                    # compute pred @ v + v0 * (Br - pred @ c)
-                    rhs = y_pred[:,0] @ self.instance.v 
-                    rhs += self.instance.v0 * (self.instance.Br - y_pred[:,0] @ self.instance.c)
+                    rhs = y_pred[:, 0] @ self.instance.v
+                    rhs += self.instance.v0 * (self.instance.Br - y_pred[:, 0] @ self.instance.c)
                     grb_model.addConstr(y_valuefun == rhs, name="set_vf")
-
+ 
                 elif self.args.approx_type == "upper":
-                    grb_model.addConstr(y_valuefun == y_pred[:,0] @ self.instance.w, name="set_vf")
-
+                    grb_model.addConstr(y_valuefun == y_pred[:, 0] @ self.instance.w, name="set_vf")
+ 
                 else:
                     raise Exception(f"approx_type={self.args.approx_type} is not implemented for {self.args.problem}")
-
+ 
+            elif "watwa" in self.args.problem:
+                # energy is additive across switch points -> sum, not mean
+                grb_model.addConstr(y_valuefun == gp.quicksum(y_pred[i, 0] for i in range(n_embed)), name="set_vf")
+ 
         else:
             raise Exception("Not implemented!  use_coef=0 not embedding for embed_inst_encoder")
-            grb_model.addConstr(y_valuefun == y_pred, name="set_vf")
-
-

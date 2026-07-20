@@ -111,7 +111,12 @@ def main(args):
     print(f"Running ML model for each instance...\n")
 
     # Extra args to pass through to 05_run_ml_blo
-    extra_args = []
+    extra_args = [
+        "--use_attention", str(args.use_attention),
+        "--attention_num_heads", str(args.attention_num_heads),
+        "--use_context", str(args.use_context),
+        "--context_hidden_dim", str(args.context_hidden_dim)
+    ]
 
     # Run ML model for all instances
     t0 = time.time()
@@ -125,14 +130,14 @@ def main(args):
         for i, task in enumerate(tasks):
             ok = run_instance(task)
             results.append(ok)
-            if (i+1) % 50 == 0:
+            if (i+1) % 10 == 0:
                 print(f"  {i+1}/{n} instances done ({time.time()-t0:.0f}s)")
 
     n_failed = sum(1 for r in results if not r)
     print(f"\nML inference done: {n - n_failed}/{n} succeeded ({time.time()-t0:.1f}s)\n")
 
     # Collect and evaluate results
-    results_dir = f"data/watwa/results/"
+    results_dir = os.path.join(cfg.data_path, "watwa", "results") + "/"
     metrics = []
 
     for inst_idx, program_dir in enumerate(program_dirs):
@@ -215,7 +220,7 @@ def main(args):
               f"hits={np.mean(hits)*100:.1f}%")
 
     # Save full results
-    out_path = f"data/watwa/results/batch_eval_{args.problem}.pkl"
+    out_path = os.path.join(cfg.data_path, "watwa", "results", f"batch_eval_{args.problem}.pkl")
     pickle.dump(metrics, open(out_path, "wb"))
     print(f"\nFull results saved to: {out_path}")
 
@@ -224,5 +229,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--problem",  type=str, default="watwa_v1")
     parser.add_argument("--n_procs", type=int, default=1)
+
+    parser.add_argument('--use_attention', type=int, default=0, help='Whether to use attention in instance encoder model.')
+    parser.add_argument('--attention_num_heads', type=int, default=4, help='Number of heads for attention in instance encoder model.')
+
+    parser.add_argument('--use_context', type=int, default=0, help='Whether to use additional context features in instance encoder model.')
+    parser.add_argument('--context_hidden_dim', type=int, default=32, help='Hidden dimension for context features in instance encoder model.')
+
     args = parser.parse_args()
     main(args)
