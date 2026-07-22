@@ -204,9 +204,14 @@ class WatwaApproximator(Approximator):
                 pf["power_nw_low"]  / 1e9,
                 pf["energy_high"]   / 1e15,
                 pf["energy_low"]    / 1e15,
+                pf["energy_ratio"],
+                pf["time_ratio"]    / 100.0,
+                pf["is_uart"],
                 pf["loop_bound"]    / 2500,
-                float(pf["is_uart"]),
                 pf["position_norm"],
+                pf["position_abs"]  / 20,
+                pf["tc_ratio_x1"],
+                pf["tc_ratio_x2"],
                 s / 20,
             ]
             rows.append(row)

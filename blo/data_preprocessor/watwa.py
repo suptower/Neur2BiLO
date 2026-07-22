@@ -108,15 +108,20 @@ class WatwaDataPreprocessor(DataPreprocessor):
                 pf = pml_feats[i]
 
                 inst_feat = [
-                    pf["time_ns_high"]   / 1e6,
-                    pf["time_ns_low"]    / 1e6,
-                    pf["power_nw_high"]  / 1e9,
-                    pf["power_nw_low"]   / 1e9,
-                    pf["energy_high"]    / 1e15,
-                    pf["energy_low"]     / 1e15,
-                    pf["loop_bound"]     / 2500,
-                    float(pf["is_uart"]),
+                    pf["time_ns_high"]  / 1e6,
+                    pf["time_ns_low"]   / 1e6,
+                    pf["power_nw_high"] / 1e9,
+                    pf["power_nw_low"]  / 1e9,
+                    pf["energy_high"]   / 1e15,
+                    pf["energy_low"]    / 1e15,
+                    pf["energy_ratio"],
+                    pf["time_ratio"]    / 100.0,
+                    pf["is_uart"],
+                    pf["loop_bound"]    / 2500,
                     pf["position_norm"],
+                    pf["position_abs"]  / 20,
+                    pf["tc_ratio_x1"],
+                    pf["tc_ratio_x2"],
                     s / 20,
                 ]
                 inst_feats.append(inst_feat)
@@ -240,40 +245,47 @@ class WatwaDataPreprocessor(DataPreprocessor):
                 })
 
             cc_node_indices = alt_group["cc-nodes"]
-            time_high, time_low = 0.0, 0.0
-            pwr_high, pwr_low   = POWER_HIGH_NW, POWER_LOW_NW
-            is_uart = False
 
-            for ni in cc_node_indices:
-                n = nodes.get(ni, {})
-                c = n.get("costs", {})
-                devices = n.get("devices", [])
-                if 0 in devices:
-                    time_high += c.get("time_ns", 0.0)
-                    if c.get("power_nW"):
-                        pwr_high = c.get("power_nW", POWER_HIGH_NW)
-                    if c.get("time_ns", 0.0) > 0:
-                        is_uart = True
-                if 1 in devices:
-                    time_low += c.get("time_ns", 0.0)
-                    if c.get("power_nW"):
-                        pwr_low = c.get("power_nW", POWER_LOW_NW)
+            # Kosten direkt aus transition_costs (Edge-Daten, korrekt)
+            tc0 = transition_costs[0] if len(transition_costs) > 0 else {"time_ns": 0.0, "power_nw": 0.0}
+            tc1 = transition_costs[1] if len(transition_costs) > 1 else {"time_ns": 0.0, "power_nw": 0.0}
+            tc2 = transition_costs[2] if len(transition_costs) > 2 else {"time_ns": 0.0, "power_nw": 0.0}
 
-            energy_high = time_high * pwr_high
-            energy_low  = time_low  * pwr_low
-            loop_bound  = self._get_loop_bound(flowfacts, cc_node_indices, nodes)
+            time_x1 = tc1["time_ns"]   # HighFreq-Transition
+            time_x2 = tc2["time_ns"]   # LowFreq-Transition
+            pwr_x1  = tc1["power_nw"]
+            pwr_x2  = tc2["power_nw"]
+
+            energy_x1 = time_x1 * pwr_x1
+            energy_x2 = time_x2 * pwr_x2
+
+            # Verhältnisse: zeigen direkt ob LowFreq lohnt
+            time_ratio   = time_x2  / time_x1  if time_x1  > 0 else 1.0
+            energy_ratio = energy_x2 / energy_x1 if energy_x1 > 0 else 1.0
+            is_uart      = float(time_ratio > 10.0)
+
+            # Transition cost ratio: Wechselkosten relativ zur Ausführungszeit
+            tc_ratio_x1 = time_x1 / time_x2 if time_x2 > 0 else 0.0
+            tc_ratio_x2 = time_x2 / time_x1 if time_x1 > 0 else 0.0
+
+            loop_bound = self._get_loop_bound(flowfacts, cc_node_indices, nodes)
 
             feats.append({
-                "time_ns_high"     : time_high,
-                "time_ns_low"      : time_low,
-                "power_nw_high"    : pwr_high,
-                "power_nw_low"     : pwr_low,
-                "energy_high"      : energy_high,
-                "energy_low"       : energy_low,
-                "loop_bound"       : loop_bound,
-                "is_uart"          : is_uart,
-                "position_norm"    : pos / max(s - 1, 1),
-                "transition_costs" : transition_costs,
+                "time_ns_high"   : time_x1,
+                "time_ns_low"    : time_x2,
+                "power_nw_high"  : pwr_x1,
+                "power_nw_low"   : pwr_x2,
+                "energy_high"    : energy_x1,
+                "energy_low"     : energy_x2,
+                "energy_ratio"   : energy_ratio,
+                "time_ratio"     : time_ratio,
+                "is_uart"        : is_uart,
+                "loop_bound"     : loop_bound,
+                "position_norm"  : pos / max(s - 1, 1),
+                "position_abs"   : float(pos),
+                "tc_ratio_x1"    : tc_ratio_x1,
+                "tc_ratio_x2"    : tc_ratio_x2,
+                "transition_costs": transition_costs,
             })
 
         instance["_pml_features"] = feats
