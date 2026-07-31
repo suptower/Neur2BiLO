@@ -504,6 +504,12 @@ def main(args):
         print(f'          err_max_over:   {val_res["err_max_over"]:.6f}')
         print(f'          err_max_under:  {val_res["err_max_under"]:.6f}')
         print(f'          val_top1_acc:   {val_res["top1_acc"]:.6f}')
+        if "inst" in args.model_type and epoch % 5 == 0:
+            for mod_name in ["instance_decision_embedder", "final_instance_embedder"]:
+                mod = getattr(net, mod_name, None)
+                if mod is not None:
+                    total_norm = sum(p.norm().item() for p in mod.parameters())
+                    print(f'          {mod_name}_norm: {total_norm:.6f}')
 
         val_metric = val_res[args.metric]
         is_better = val_metric > val_metric_best if args.metric == "top1_acc" else val_metric < val_metric_best

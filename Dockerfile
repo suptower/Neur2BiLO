@@ -35,7 +35,7 @@ RUN python -m pip install torch \
 
 # Install remaining dependencies
 # Note: dependencies have been frozen and put in requirements.txt for reproducibility
-RUN python -m pip install -r requirements.txt
+RUN python -m pip install -r /app/requirements.txt
 
 # Create required data directories
 RUN mkdir -p data/kp/random_search \

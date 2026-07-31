@@ -147,4 +147,3 @@ node game, 2023.
 - Reference: Bo Zhou, Ruiwei Jiang, and Siqian Shen. "Learning to solve bilevel programs with binary tender." *The Twelfth International Conference on Learning Representations*, 2024.
 - Link to Full Repository: [https://github.com/bozlamberth/LearnBilevel](https://github.com/bozlamberth/LearnBilevel)
 
-

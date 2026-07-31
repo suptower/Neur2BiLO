@@ -88,7 +88,7 @@ class WatwaDataPreprocessor(DataPreprocessor):
         """
         # Determine padding size across all samples
         pad_size = self.get_max_s(data)
-        n_inst   = 10
+        n_inst   = 15
         n_dec    = 5
 
         inst_features, decision_features, decisions, n_decisions, labels, inst_ids = \

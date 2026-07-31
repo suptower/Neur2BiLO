@@ -562,3 +562,16 @@ watwa_v6 = SimpleNamespace(
     seed               = 7,
     data_path          = './data/v6/',
 )
+
+watwa_v7 = SimpleNamespace(
+    program_dirs       = program_dirs,
+    n_samples_inst     = len(program_dirs),
+    n_samples_per_inst = 100000,
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)

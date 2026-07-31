@@ -112,20 +112,21 @@ class WatwaApproximator(Approximator):
 
         Shape: (s, n_inst_feats + n_dec_feats)
 
-        Instance features (10, fixed per switch-point):
+        Instance features (15, fixed per switch-point):
           time_ns_high, time_ns_low, power_nw_high, power_nw_low,
-          energy_high, energy_low, loop_bound, is_uart,
-          position_norm, n_switch_points
+          energy_high, energy_low, energy_ratio, time_ratio,
+          is_uart, loop_bound, position_norm, position_abs,
+          tc_ratio_x1, tc_ratio_x2, n_switch_points
 
         Decision features (5, depend on x[i]):
           x_oh_0, x_oh_1, x_oh_2  (one-hot, directly the Gurobi vars)
           transition_cost_time, transition_cost_power
           (linear combination: sum_c x_oh[i,c] * cost_c)
 
-        Total: 15 features per switch-point.
+        Total: 20 features per switch-point.
         """
         s          = self.s
-        n_inst     = 10
+        n_inst     = 15
         n_dec      = 5
         n_feats    = n_inst + n_dec
 
@@ -184,7 +185,7 @@ class WatwaApproximator(Approximator):
     def _get_instance_features_np(self):
         """
         Extract static instance features from the pre-parsed PML data.
-        Returns numpy array of shape (s, 10).
+        Returns numpy array of shape (s, 15).
         """
         from blo.data_preprocessor.watwa import WatwaDataPreprocessor
         dp = WatwaDataPreprocessor(
