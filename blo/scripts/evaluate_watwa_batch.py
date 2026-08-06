@@ -80,10 +80,18 @@ def evaluate_single(inst_idx, program_dir, result_path):
         "s":             s,
     }
 
-
 def run_instance(args_tuple):
-    """Run 05_run_ml_blo for a single instance index."""
-    inst_idx, problem, extra_args = args_tuple
+    """Run 05_run_ml_blo for a single instance index, skipping if already done."""
+    inst_idx, problem, extra_args, results_dir = args_tuple
+
+    # Skip if a result file for this instance already exists (resume support)
+    existing = [
+        f for f in os.listdir(results_dir)
+        if f.endswith(".pkl") and (f"i-{inst_idx}_" in f or f.endswith(f"i-{inst_idx}.pkl") or f"_i-{inst_idx}" in f)
+    ]
+    if existing:
+        return True
+
     cmd = [
         "python", "-m", "blo.scripts.05_run_ml_blo",
         "--problem", problem,
@@ -97,7 +105,6 @@ def run_instance(args_tuple):
         print(f"  [!] inst {inst_idx} failed: {result.stderr[-200:]}")
         return False
     return True
-
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
@@ -120,7 +127,8 @@ def main(args):
 
     # Run ML model for all instances
     t0 = time.time()
-    tasks = [(i, args.problem, extra_args) for i in range(n)]
+    results_dir = os.path.join(cfg.data_path, "watwa", "results") + "/"
+    tasks = [(i, args.problem, extra_args, results_dir) for i in range(n)]
 
     if args.n_procs > 1:
         with Pool(args.n_procs) as pool:
@@ -137,7 +145,6 @@ def main(args):
     print(f"\nML inference done: {n - n_failed}/{n} succeeded ({time.time()-t0:.1f}s)\n")
 
     # Collect and evaluate results
-    results_dir = os.path.join(cfg.data_path, "watwa", "results") + "/"
     metrics = []
 
     for inst_idx, program_dir in enumerate(program_dirs):

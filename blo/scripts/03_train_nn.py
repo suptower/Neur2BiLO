@@ -401,19 +401,30 @@ def main(args):
     # optimizer
     Opt = getattr(torch.optim, args.optimizer)
     optimizer = Opt(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    # # Stärkere Regularisierung auf value_out Layer für MIP-Kompatibilität
-    # if "inst" in args.model_type and args.weight_decay > 0:
-    #     param_groups = [
-    #         {'params': [p for n, p in net.named_parameters()
-    #                     if 'value_out' not in n],
-    #         'weight_decay': args.weight_decay * 500},
-    #         {'params': [p for n, p in net.named_parameters()
-    #                     if 'value_out' in n],
-    #         'weight_decay': args.weight_decay * 500},
-    #     ]
-    #     optimizer = Opt(param_groups, lr=args.lr)
-    # else:
-    #     optimizer = Opt(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
+    # Staerkere Regularisierung auf value_predictor UND context_proj, da beide
+    # Submodule direkt in die Big-M-Bound-Propagation der Surrogate-MIP eingehen.
+    # context_proj wird pro Switch-Point einmal ausgewertet (Leave-one-out-Summe),
+    # sein Beitrag zu den Bounds waechst also mit s -- bei grossen Instanzen war
+    # das bisher der dominante, unregulierte Anteil.
+    if "inst" in args.model_type and args.weight_decay > 0:
+        strong_decay_names = ['value_predictor', 'context_proj']
+        value_param_names = [n for n, p in net.named_parameters()
+                              if any(k in n for k in strong_decay_names)]
+        print(f"  [param_groups] {len(value_param_names)} params in strong-decay group:")
+        for n in value_param_names:
+            print(f"    {n}")
+        param_groups = [
+            {'params': [p for n, p in net.named_parameters()
+                        if not any(k in n for k in strong_decay_names)],
+            'weight_decay': args.weight_decay},
+            {'params': [p for n, p in net.named_parameters()
+                        if any(k in n for k in strong_decay_names)],
+            'weight_decay': args.weight_decay * 1000},
+        ]
+        optimizer = Opt(param_groups, lr=args.lr)
+    else:
+        optimizer = Opt(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # scdheuler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.9, cooldown=100)
