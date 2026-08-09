@@ -455,7 +455,7 @@ def main(args):
             fp_nn = get_path(cfg.data_path, cfg, f"nn_{args.model_type}_{args.approx_type}", suffix='pt')
 
         # load network
-        net = torch.load(fp_nn)
+        net = torch.load(fp_nn, weights_only=False)
 
     # initialize BLO class
     blo = factory_blo(args.problem)
@@ -688,6 +688,12 @@ if __name__ == '__main__':
 
     # output
     parser.add_argument('--verbose', type=int, default=0, help='Verbose param for optimization model')
+
+    parser.add_argument('--use_attention', type=int, default=0, help='Whether to use attention in instance encoder model.')
+    parser.add_argument('--attention_num_heads', type=int, default=4, help='Number of heads for attention in instance encoder model.')
+
+    parser.add_argument('--use_context', type=int, default=0, help='Whether to use context-sum cross-switch-point interaction.')
+    parser.add_argument('--context_hidden_dim', type=int, default=32, help='Output dim of context projection layer.')
 
     args = parser.parse_args()
 

@@ -510,10 +510,10 @@ watwa_v1 = SimpleNamespace(
     data_path          = './data/',
 )
 
-watwa_v1a = SimpleNamespace(
-    program_dirs       = program_dirs_v1a, # use first 250 generated programs
-    n_samples_inst     = len(program_dirs_v1a),   # alle Programme
-    n_samples_per_inst = 50,                   # 50 Szenarien pro Programm
+watwa_v2 = SimpleNamespace(
+    program_dirs       = program_dirs, # use all generated programs
+    n_samples_inst     = len(program_dirs),   # alle Programme
+    n_samples_per_inst = 10000,                   # 100k Szenarien pro Programm
     time_limit         = 60,
     mip_gap            = 0.01,
     verbose            = 0,
@@ -523,10 +523,50 @@ watwa_v1a = SimpleNamespace(
     data_path          = './data/',
 )
 
-watwa_v1b = SimpleNamespace(
-    program_dirs       = program_dirs_v1b, # use remaining generated programs
-    n_samples_inst     = len(program_dirs_v1b),   # alle Programme
-    n_samples_per_inst = 50,                   # 50 Szenarien pro Programm
+watwa_v3 = SimpleNamespace(
+    program_dirs       = program_dirs, # use all generated programs
+    n_samples_inst     = len(program_dirs),   # alle Programme
+    n_samples_per_inst = 50000,                   # 100k Szenarien pro Programm
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)
+
+
+watwa_v5 = SimpleNamespace(
+    program_dirs       = program_dirs,
+    n_samples_inst     = len(program_dirs),
+    n_samples_per_inst = 50000,
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/v5/',
+)
+
+watwa_v6 = SimpleNamespace(
+    program_dirs       = program_dirs,
+    n_samples_inst     = len(program_dirs),
+    n_samples_per_inst = 50000,
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/v6/',
+)
+
+watwa_v7 = SimpleNamespace(
+    program_dirs       = program_dirs,
+    n_samples_inst     = len(program_dirs),
+    n_samples_per_inst = 100000,
     time_limit         = 60,
     mip_gap            = 0.01,
     verbose            = 0,

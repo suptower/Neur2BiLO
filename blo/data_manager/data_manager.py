@@ -99,13 +99,9 @@ class DataManager(ABC):
         mp_count = Manager().Value('i', 0)
         mp_time = time.time()
 
-        # optional.  Set to true if debugging.  Avoids any anymultiprocessing related issues.
-        debug = True
-        if debug:
-            print("Running in debugging mode...")
-            for instance, inst_id, x in tr_procs_to_run:
-                res = self._solve_lower_level_mp(x, instance, inst_id, mp_time, mp_count, len(tr_procs_to_run))
-                tr_data.append(res)
+        for instance, inst_id, x in tr_procs_to_run:
+            res = self._solve_lower_level_mp(x, instance, inst_id, mp_time, mp_count, len(tr_procs_to_run))
+            tr_data.append(res)
 
 
         tr_time = time.time() - tr_time

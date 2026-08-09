@@ -1,0 +1,3 @@
+Top-level type: <class 'list'>
+Liste, Laenge: 498
+Erster Eintrag: {'inst_idx': 0, 'program_dir': 'programs/generated/gen_0000', 'opt_scenario': '(2, 0)', 'ml_scenario': '(2, 2)', 'opt_energy': 4130357.3131259996, 'ml_energy': 4130850.839446, 'quality_gap': 0.00011948756066013597, 'optimal_hit': False, 'watwaos_time': 0.3178540469962172, 'ml_time': 0.011298179626464844, 'speedup': 28.13320884469532, 'num_scenarios': 9, 'greedy_gap': 0.00011948756066013597, 's': 2}

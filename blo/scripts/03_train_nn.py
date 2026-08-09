@@ -45,32 +45,31 @@ from blo.models import *
 #------------------------------------------------#
 
 def forward_pass_all_data(net, loader, model_type):
-    """ Get predictions on entire dataset (as list).  Respects batch size.  """
-    labels_all, preds_all = [], []
-
+    labels_all, preds_all, inst_ids_all = [], [], []
     with torch.no_grad():
-
         for batch_data in loader:
-
             if "set" in model_type:
                 features, n_decisions, p, labels = batch_data
                 preds = net(features, p, n_decisions)
-
+                inst_ids = torch.zeros(labels.shape[0])
             elif "ff" in model_type:
                 features, p, labels = batch_data
                 preds = net(features, p)
-
+                inst_ids = torch.zeros(labels.shape[0])
             elif "inst" in model_type:
-                inst_features, decisions_features, x, n_decisions, p, labels = batch_data
+                inst_features, decisions_features, x, n_decisions, labels, inst_ids = batch_data
+                p = torch.zeros(inst_features.shape[0], 1, device=inst_features.device)
                 preds = net(inst_features, decisions_features, x, p, n_decisions)
-            
+
             labels = labels.cpu().numpy().reshape(-1)
             preds = preds.detach().cpu().numpy().reshape(-1)
-            
+            inst_ids = inst_ids.cpu().numpy().reshape(-1)
+
             labels_all += labels.tolist()
             preds_all += preds.tolist()
-        
-    return labels_all, preds_all
+            inst_ids_all += inst_ids.tolist()
+
+    return labels_all, preds_all, inst_ids_all
 
 
 
@@ -81,64 +80,62 @@ def test_model_predictions(cfg, net, loader, model_type, print_predictions=False
     err_max_over = -1
     err_max_under = -1
     counter = 0
-
     labels_instance = []
     outputs_instance = []
-
     res_kendall_all = []
+    top1_correct = 0
+    top1_total = 0
 
-    labels_all, preds_all = forward_pass_all_data(net, loader, model_type)
+    labels_all, preds_all, inst_ids_all = forward_pass_all_data(net, loader, model_type)
 
-
+    # MAPE/MAE berechnen
     for i in range(len(labels_all)):
-
         pred = preds_all[i]
         label = labels_all[i]
-
         mae_cur = np.abs(label - pred)
-        err_cur = np.abs(label - pred) / label
+        err_cur = np.abs(label - pred) / (label + 1e-8)
         err += err_cur
         err_max_over = np.max([err_cur, err_max_over]) if pred - label > 0 else err_max_over
         err_max_under = np.max([err_cur, err_max_under]) if pred - label < 0 else err_max_under
-
-        labels_instance += [label]
-        outputs_instance += [pred]
-
-        if get_ranking and (i % cfg.n_samples_per_inst) == 0 and i > 0:
-            res_kendall = stats.kendalltau(labels_instance, outputs_instance)
-            res_kendall_all += [res_kendall.statistic]
-
-        labels_instance = []
-        outputs_instance = []
-
         counter += 1
 
-    try:
-        mae = mae_cur/counter
-        mape = err/counter
+    mae = mae_cur / counter
+    mape = err / counter
 
-    except:
-        mae = mae_cur/counter
-        mape = err[0,0].item()/counter
+    # Top-1 accuracy: gruppiere nach inst_id
+    from collections import defaultdict
+    inst_labels = defaultdict(list)
+    inst_preds  = defaultdict(list)
+    for label, pred, iid in zip(labels_all, preds_all, inst_ids_all):
+        inst_labels[iid].append(label)
+        inst_preds[iid].append(pred)
+    top1_correct = sum(
+        np.argmin(inst_labels[iid]) == np.argmin(inst_preds[iid])
+        for iid in inst_labels
+    )
+    top1_total = len(inst_labels)
+    top1_acc = top1_correct / top1_total if top1_total > 0 else 0.0
 
     if verbose:
         print("Mean Percentage Error =", mape)
-        print("max over/underestimate \%:", err_max_over, err_max_under)
+        print("max over/underestimate :", err_max_over, err_max_under)
         if get_ranking:
             print("Kendall:", np.min(res_kendall_all), np.median(res_kendall_all), np.max(res_kendall_all))
+            print("Top-1 Accuracy:", top1_acc)
 
     res = {
-        "mae" : mae,
-        "mape" : mape,
-        "err_max_over" : err_max_over,
-        "err_max_under" : err_max_under,
-        "kendall_all" : res_kendall_all,
-        "kendall_min" : np.min(res_kendall_all),
-        "kendall_max" : np.max(res_kendall_all),
-        "kendall_median" : np.median(res_kendall_all),
-        "kendall_mean" : np.mean(res_kendall_all),
+        "mae"            : mae,
+        "mape"           : mape,
+        "top1_acc"       : top1_acc,
+        "err_max_over"   : err_max_over,
+        "err_max_under"  : err_max_under,
+        "kendall_all"    : res_kendall_all,
+        "kendall_min"    : np.min(res_kendall_all) if res_kendall_all else 0,
+        "kendall_max"    : np.max(res_kendall_all) if res_kendall_all else 0,
+        "kendall_median" : np.median(res_kendall_all) if res_kendall_all else 0,
+        "kendall_mean"   : np.mean(res_kendall_all) if res_kendall_all else 0,
     }
-
+    
     return res
 
 
@@ -212,15 +209,44 @@ def main(args):
     print("Preprocessing data  ... ")
     data_preprocessor = factory_dp(args, args.model_type, args.approx_type, args.problem, device)
 
-    if args.scale_labels:
+    if args.scale_labels and args.problem in ["watwa"]:
+        print("  Scaling labels for watwa ...")
+        data_preprocessor.get_label_scalers(dataset['tr_data'] + dataset['val_data'])
+    elif args.scale_labels:
         print("  Scaling labels ...")
         data_preprocessor.get_label_scalers(dataset['tr_data'])
 
     tr_dataset, val_dataset = data_preprocessor.preprocess_data(dataset['tr_data'], dataset['val_data'])
 
     # create train/validation loaders
-    tr_loader = DataLoader(tr_dataset, shuffle=True, batch_size=args.batch_size)
-    val_loader = DataLoader(val_dataset, shuffle=False, batch_size=args.batch_size_eval)
+    # Instanz-gruppierter Sampler für Ranking-Loss
+    if "inst" in args.model_type and args.ranking_loss_weight > 0:
+        from torch.utils.data import BatchSampler, SequentialSampler
+        # inst_ids sind der letzte Tensor im Dataset
+        all_inst_ids = tr_dataset.tensors[-1].long().tolist()
+        # Gruppiere Indices nach inst_id
+        from collections import defaultdict
+        id_to_indices = defaultdict(list)
+        for idx, iid in enumerate(all_inst_ids):
+            id_to_indices[int(iid)].append(idx)
+        # Baue Batches: pro Batch samples_per_inst Samples aus batch_size//samples_per_inst Instanzen
+        samples_per_inst = args.samples_per_inst
+        insts_per_batch = max(1, args.batch_size // samples_per_inst)
+        inst_keys = list(id_to_indices.keys())
+        grouped_batches = []
+        np.random.shuffle(inst_keys)
+        for i in range(0, len(inst_keys), insts_per_batch):
+            batch = []
+            for iid in inst_keys[i:i+insts_per_batch]:
+                idxs = id_to_indices[iid]
+                chosen = np.random.choice(idxs, min(samples_per_inst, len(idxs)), replace=False).tolist()
+                batch.extend(chosen)
+            grouped_batches.append(batch)
+        tr_loader = DataLoader(tr_dataset, batch_sampler=grouped_batches)
+        val_loader = DataLoader(val_dataset, shuffle=False, batch_size=args.batch_size_eval)
+    else:
+        tr_loader = DataLoader(tr_dataset, shuffle=True, batch_size=args.batch_size)
+        val_loader = DataLoader(val_dataset, shuffle=False, batch_size=args.batch_size_eval)
 
     # initializing model
     print("Initializing Model  ... ")
@@ -299,49 +325,71 @@ def main(args):
  
         inst_feat_size = tr_dataset[0][0].shape[-1]
         decision_feat_size = tr_dataset[0][1].shape[-1]
-
+ 
         # instance embedding networks
         instance_decision_embedder = FeedForwardBase(
-            input_dim = inst_feat_size, 
-            hidden_dims = args.inst_embed_hidden_dim, 
-            output_dim = args.inst_embed_output_dim, 
-            output_relu = args.inst_embed_relu_output, 
-            dropout = args.dropout, 
+            input_dim = inst_feat_size,
+            hidden_dims = args.inst_embed_hidden_dim,
+            output_dim = args.inst_embed_output_dim,
+            output_relu = args.inst_embed_relu_output,
+            dropout = args.dropout,
             bias = False,
             name="instance_decision_embedder")
-
+ 
         final_instance_embedder = FeedForwardBase(
-            input_dim = args.inst_embed_output_dim, 
-            hidden_dims = args.inst_post_agg_hidden_dim, 
-            output_dim = args.inst_post_agg_output_dim, 
-            output_relu = args.inst_post_agg_relu_output, 
-            dropout = args.dropout, 
+            input_dim = args.inst_embed_output_dim,
+            hidden_dims = args.inst_post_agg_hidden_dim,
+            output_dim = args.inst_post_agg_output_dim,
+            output_relu = args.inst_post_agg_relu_output,
+            dropout = args.dropout,
             bias = True,
             name="final_instance_embedder")
-
+ 
+        # raw per-switch-point feature dim BEFORE context concat
+        # (decision features + broadcast instance embedding)
+        own_feat_dim = decision_feat_size + args.inst_post_agg_output_dim
+ 
+        # --- NEW: context projection (MIP-compatible cross-switch-point interaction) ---
+        context_proj = None
+        value_input_dim = own_feat_dim
+        if args.use_context:
+            context_proj = FeedForwardBase(
+                input_dim = own_feat_dim,
+                hidden_dims = [args.context_hidden_dim],  # mindestens 1 Hidden-Layer nötig
+                output_dim = args.context_hidden_dim,
+                output_relu = args.context_relu_output,
+                dropout = args.dropout,
+                bias = True,
+                name = "context_proj")
+            context_proj.to(device)
+ 
+            # value_predictor must accept the concatenated [own_feats, context] vector
+            value_input_dim = own_feat_dim + args.context_hidden_dim
+ 
         # value predictor
-        value_input_dim = decision_feat_size + args.inst_post_agg_output_dim
         value_predictor = FeedForwardBase(
-            input_dim = value_input_dim,  
-            hidden_dims = args.inst_value_hidden_dim, 
-            output_dim = 1, 
-            output_relu = args.inst_value_relu_output, 
-            dropout = args.dropout, 
+            input_dim = value_input_dim,
+            hidden_dims = args.inst_value_hidden_dim,
+            output_dim = 1,
+            output_relu = args.inst_value_relu_output,
+            dropout = args.dropout,
             bias = True,
             name = "value")
-
+ 
         instance_decision_embedder.to(device)
         final_instance_embedder.to(device)
         value_predictor.to(device)
-
+ 
         net = SetInstanceEncodingNetwork(
-            instance_decision_embedder = instance_decision_embedder, 
-            final_instance_embedder = final_instance_embedder, 
+            instance_decision_embedder = instance_decision_embedder,
+            final_instance_embedder = final_instance_embedder,
             value_predictor = value_predictor,
             agg_type = args.set_agg_type,
             use_coef = args.use_coef,
             problem = args.problem,
-            approx_type = args.approx_type)
+            approx_type = args.approx_type,
+            use_context = bool(args.use_context),
+            context_proj = context_proj)
 
     else:
         raise Exception("No other model_types implemented")
@@ -352,10 +400,34 @@ def main(args):
 
     # optimizer
     Opt = getattr(torch.optim, args.optimizer)
-    optimizer = Opt(net.parameters(), lr=args.lr)
+    optimizer = Opt(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
+    # Staerkere Regularisierung auf value_predictor UND context_proj, da beide
+    # Submodule direkt in die Big-M-Bound-Propagation der Surrogate-MIP eingehen.
+    # context_proj wird pro Switch-Point einmal ausgewertet (Leave-one-out-Summe),
+    # sein Beitrag zu den Bounds waechst also mit s -- bei grossen Instanzen war
+    # das bisher der dominante, unregulierte Anteil.
+    if "inst" in args.model_type and args.weight_decay > 0:
+        strong_decay_names = ['value_predictor', 'context_proj']
+        value_param_names = [n for n, p in net.named_parameters()
+                              if any(k in n for k in strong_decay_names)]
+        print(f"  [param_groups] {len(value_param_names)} params in strong-decay group:")
+        for n in value_param_names:
+            print(f"    {n}")
+        param_groups = [
+            {'params': [p for n, p in net.named_parameters()
+                        if not any(k in n for k in strong_decay_names)],
+            'weight_decay': args.weight_decay},
+            {'params': [p for n, p in net.named_parameters()
+                        if any(k in n for k in strong_decay_names)],
+            'weight_decay': args.weight_decay * 1000},
+        ]
+        optimizer = Opt(param_groups, lr=args.lr)
+    else:
+        optimizer = Opt(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # scdheuler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.9, cooldown=100, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.9, cooldown=100)
 
     # training model
     print("Training Model  ... ")
@@ -365,7 +437,7 @@ def main(args):
 
     loss_epoch = []
     # val_mape_min = math.inf
-    val_metric_min = math.inf
+    val_metric_best = -math.inf if args.metric == "top1_acc" else math.inf
     loss_epoch_min_idx = 0
 
     total_size = len(tr_loader)
@@ -387,16 +459,36 @@ def main(args):
                 preds = net(features, p)
 
             elif "inst" in args.model_type:
-                inst_features, decisions_features, x, n_decisions, p, labels = batch_data
+                inst_features, decisions_features, x, n_decisions, labels, inst_ids = batch_data
+                p = torch.zeros(inst_features.shape[0], 1, device=inst_features.device)  # dummy p tensor
                 preds = net(inst_features, decisions_features, x, p, n_decisions)
 
             # compute loss
-            loss = criterion(preds, labels)
-            loss_epoch[-1] += loss.item() / len(tr_dataset)
+            mse_loss = criterion(preds, labels)
+            ranking_loss = torch.tensor(0.0, device=preds.device)
+            if "inst" in args.model_type and args.ranking_loss_weight > 0:
+                preds_flat  = preds.squeeze(-1)
+                labels_flat = labels.squeeze(-1)
+                k = args.ranking_loss_k
+                for uid in inst_ids.unique():
+                    mask = (inst_ids == uid)
+                    if mask.sum() < 2 * k:
+                        continue
+                    p_lab = labels_flat[mask]
+                    p_pre = preds_flat[mask]
+                    _, bot_idx = torch.topk(p_lab, k, largest=False)
+                    _, top_idx = torch.topk(p_lab, k, largest=True)
+                    best_preds  = p_pre[bot_idx]
+                    worst_preds = p_pre[top_idx]
+                    margin_violations = torch.relu(
+                        best_preds.unsqueeze(1) - worst_preds.unsqueeze(0) + args.ranking_margin
+                    )
+                    ranking_loss = ranking_loss + margin_violations.mean()
+
+            loss = mse_loss + args.ranking_loss_weight * ranking_loss
+            loss_epoch[-1] += loss.item() / len(tr_loader)
 
             optimizer.zero_grad()
-
-            # backpropagation
             loss.backward()
             optimizer.step()
 
@@ -422,12 +514,20 @@ def main(args):
         print(f'          tr_loss:        {loss_epoch[-1]:.6f}')
         print(f'          err_max_over:   {val_res["err_max_over"]:.6f}')
         print(f'          err_max_under:  {val_res["err_max_under"]:.6f}')
+        print(f'          val_top1_acc:   {val_res["top1_acc"]:.6f}')
+        if "inst" in args.model_type and epoch % 5 == 0:
+            for mod_name in ["instance_decision_embedder", "final_instance_embedder"]:
+                mod = getattr(net, mod_name, None)
+                if mod is not None:
+                    total_norm = sum(p.norm().item() for p in mod.parameters())
+                    print(f'          {mod_name}_norm: {total_norm:.6f}')
 
         val_metric = val_res[args.metric]
-        loss_epoch_min_idx = epoch if val_metric < val_metric_min else loss_epoch_min_idx
+        is_better = val_metric > val_metric_best if args.metric == "top1_acc" else val_metric < val_metric_best
+        loss_epoch_min_idx = epoch if is_better else loss_epoch_min_idx
         if loss_epoch_min_idx == epoch:
             print("    new best model")
-            val_metric_min = val_metric
+            val_metric_best = val_metric
             best_model = copy.deepcopy(net) # copy.deepcopy(net.state_dict())
 
             # if model found within last 200 epochs, then increase # of epochs
@@ -442,7 +542,7 @@ def main(args):
 
         if (epoch+1) % 10 == 0:
             print("    Epoch {}/{} Step {}/{} : Epoch {} {:.6f}, Loss {:.6f}".format(epoch+1, args.n_epochs,i+1, total_size, args.metric, val_metric, loss_epoch[-1]))
-            print("    Best Epoch {} : Best {}, {:.6f}, Best Loss {:.6f}".format(loss_epoch_min_idx+1, args.metric, val_metric_min, loss_epoch[loss_epoch_min_idx]))
+            print("    Best Epoch {} : Best {}, {:.6f}, Best Loss {:.6f}".format(loss_epoch_min_idx+1, args.metric, val_metric_best, loss_epoch[loss_epoch_min_idx]))
 
     print("Done training")
 
@@ -498,6 +598,14 @@ def main(args):
 
         params["inst_agg_type"] = args.inst_agg_type
 
+        params["use_context"] = bool(args.use_context)
+        params["use_rank_labels"] = bool(args.use_rank_labels)
+        params["context_hidden_dim"] = args.context_hidden_dim
+        params["ranking_loss_weight"] = args.ranking_loss_weight
+
+        params["ranking_loss_k"] = args.ranking_loss_k
+        params["ranking_margin"] = args.ranking_margin
+
     if "kp" in args.problem:
         params["kp_use_greedy"] = args.kp_use_greedy
 
@@ -506,7 +614,7 @@ def main(args):
     # collect results
     results = {
         'val_metric' : args.metric,
-        'val_metric_min' : val_metric_min,
+        'val_metric_min' : val_metric_best,
         'val_results' : val_results,
         'eval_res' : eval_res,
         'term_epoch' : epoch,
@@ -558,10 +666,27 @@ def main(args):
         save_data["instance_decision_embedder"] = net.instance_decision_embedder
         save_data["final_instance_embedder"] = net.final_instance_embedder
         save_data["value_predictor"] = net.value_predictor
+        if net.use_context:
+            save_data["context_proj"] = net.context_proj
 
     torch.save(save_data, fp_net)
 
     print('  Saved model to:', fp_net)
+
+    # Zusätzlich unter dem kurzen "both"-Pfad speichern, den 05_run_ml_blo.py
+    # standardmäßig sucht (ohne Hyperparameter-Suffix im Dateinamen).
+    # Das ersetzt das bisherige manuelle Symlink-Setzen und verhindert, dass
+    # Batch-Eval-Läufe versehentlich ein altes/falsches Modell laden.
+    fp_net_short = get_path(cfg.data_path, cfg, f"nn_{args.model_type}_both", suffix="pt")
+    torch.save(save_data, fp_net_short)
+    print('  Saved model (short path, used by 05_run_ml_blo.py):', fp_net_short)
+    
+    # Gleiches für die Trainings-Ergebnisse (.pkl), falls 05_run_ml_blo.py oder
+    # andere Scripts diese ebenfalls über den kurzen Pfad referenzieren.
+    fp_res_short = get_path(cfg.data_path, cfg, f"nn_res_{args.model_type}_both")
+    with open(fp_res_short, 'wb') as p:
+        pkl.dump(results, p)
+    print('  Saved training results (short path):', fp_res_short)
 
     return
     
@@ -579,7 +704,7 @@ if __name__ == '__main__':
     parser.add_argument('--approx_type', type=str, default='both', choices=['lower', 'upper', 'both'])
 
     # metric to track best model over
-    parser.add_argument('--metric', type=str, default='mae', choices=['mape', 'mae'])
+    parser.add_argument('--metric', type=str, default='mae', choices=['mape', 'mae', 'top1_acc'])
 
     # Knapsack specific
     parser.add_argument('--kp_use_greedy', type=int, default=0, help='Use greedy features.')
@@ -593,6 +718,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size_eval', type=int, default=32, help='Batch size.')
     parser.add_argument('--lr', type=float, default=1e-2, help='Learning rate.')
     parser.add_argument('--optimizer', type=str, default='Adam')
+    parser.add_argument('--weight_decay', type=float, default=0.0, help='L2 regularization weight decay.')
     parser.add_argument('--n_epochs', type=int, default=1000, help='Number of training epochs.')
     parser.add_argument('--dropout', type=float, default=0, help='Dropout rate.')
 
@@ -623,6 +749,25 @@ if __name__ == '__main__':
     parser.add_argument('--inst_value_relu_output', type=int, default=0, help='Indicator for using ReLU on output of value network.')
 
     parser.add_argument('--inst_agg_type', type=str, default="sum", help='Type of aggregation (sum, mean).')
+
+
+    # Attention parameters -- IGNORE for now, no improvements seen
+    parser.add_argument('--use_attention', type=int, default=0, help='Whether to use attention in instance encoder model.')
+    parser.add_argument('--attention_num_heads', type=int, default=4, help='Number of heads for attention in instance encoder model.')
+
+    parser.add_argument('--use_context', type=int, default=0, help='Whether to use leave-one-out context sum across switch points.')
+    parser.add_argument('--context_hidden_dim', type=int, default=32, help='Hidden dimension for context projection (if use_context=1).')
+    parser.add_argument('--context_relu_output', type=int, default=1, help='Indicator for using ReLU on output of context projection.')
+
+    parser.add_argument('--ranking_loss_weight', type=float, default=0.0, help='Weight for ranking loss (only used for instance encoder model).')
+
+    parser.add_argument('--ranking_loss_k', type=int, default=5,
+        help='Top-k/Bottom-k pairs for ranking loss.')
+    parser.add_argument('--use_rank_labels', type=int, default=0, help='Use rank-based labels instead of normalized energy.')
+    parser.add_argument('--ranking_margin', type=float, default=0.0,
+        help='Margin for ranking loss violations.')
+
+    parser.add_argument('--samples_per_inst', type=int, default=50, help='Number of samples per instance for ranking loss batch sampling (only used for instance encoder model).')
 
     # random seed
     parser.add_argument('--seed', type=int, default=12345, help='Seed.')
