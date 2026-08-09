@@ -1,0 +1,5 @@
+Beispiel-Key: (0, 0, 0, 0)
+Beispiel-Value type: <class 'dict'>
+Beispiel-Value: {'time': 282250649.0, 'energy': 25973039.104720004, 'energy_scaled': 0.9995032980567136}
+
+program_dir dieser Zeile: programs/generated/gen_0172

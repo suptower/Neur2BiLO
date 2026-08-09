@@ -21,6 +21,10 @@ def factory_get_path(args):
         from .dr import get_path
         return get_path
 
+    elif 'watwa' in args.problem:
+        from .watwa import get_path
+        return get_path
+
     else:
         raise Exception(f"blo.utils not defined for problem class {args.problem}")
 

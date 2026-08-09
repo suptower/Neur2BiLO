@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.pt
+*.pkl
+*.aux
+*.log
+*.logclear
+*.out
+*.mps
+programs/
+*.lp
+/gurobi*

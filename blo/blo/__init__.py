@@ -18,5 +18,10 @@ def factory_blo(problem):
         from .dr import DonorRecipient
         return DonorRecipient()
 
+    elif "watwa" in problem:
+        print("Loading WatwaOS BLO...")
+        from .watwa import Watwa
+        return Watwa()
+
     else:
         raise ValueError("Invalid problem type!")

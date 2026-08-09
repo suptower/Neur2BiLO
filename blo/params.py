@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 # ---------------------#
 #   Knapsack Problem   #
@@ -427,3 +428,150 @@ dr_30_hard = SimpleNamespace(
     data_path = './data/',
 )
 
+#---------------------------------------#
+#           WatwaOS Problem             #
+#---------------------------------------#
+
+# Small configuration: Stage 1-4 programs (2-8 switch-points)
+# suitable for initial training and debugging
+watwa_small = SimpleNamespace(
+    # paths to program directories
+    program_dirs = [
+        './programs/stage1',   # 1x Compute + 1x UART  -> s=2,  9 scenarios
+        './programs/stage2',   # 2x Compute + 1x UART  -> s=2,  9 scenarios
+        './programs/stage3',   # 2x Compute + 2x UART  -> s=4, 81 scenarios
+        './programs/stage4',   # 3x Compute + 2x UART  -> s=4, 81 scenarios
+    ],
+
+    # number of samples
+    n_samples_inst     = 50,    # number of program instances to use
+    n_samples_per_inst = 9,     # number of x samples per instance
+                                # (= total scenarios for stage1/2, subset for larger)
+
+    # data generation parameters
+    time_limit = 60,
+    mip_gap    = 0.01,
+    verbose    = 0,
+    threads    = 1,
+    tr_split   = 0.80,
+
+    # generic parameters
+    seed      = 7,
+    data_path = './data/',
+)
+
+
+# Large configuration: Stage 1-7 programs (2-16 switch-points)
+# for full training once pipeline is validated
+watwa_large = SimpleNamespace(
+    program_dirs = [
+        './programs/stage1',   # s=2,   9 scenarios
+        './programs/stage2',   # s=2,   9 scenarios
+        './programs/stage3',   # s=4,  81 scenarios
+        './programs/stage4',   # s=4,  81 scenarios
+        './programs/stage5',   # s=4,  81 scenarios (nested)
+        './programs/stage6',   # s=6, 729 scenarios
+        './programs/stage7',   # s=8, 6561 scenarios
+    ],
+
+    # number of samples
+    n_samples_inst     = 200,
+    n_samples_per_inst = 50,
+
+    # data generation parameters
+    time_limit = 120,
+    mip_gap    = 0.01,
+    verbose    = 0,
+    threads    = 1,
+    tr_split   = 0.80,
+
+    # generic parameters
+    seed      = 7,
+    data_path = './data/',
+)
+
+
+generated_dir = Path('./programs/generated')
+program_dirs  = sorted([str(p) for p in generated_dir.iterdir()
+                        if (p / 'build' / 'optimize-result.json').exists()])
+program_dirs_v1a = [d for d in program_dirs if int(d.split("_")[-1]) < 250]
+program_dirs_v1b = [d for d in program_dirs if int(d.split("_")[-1]) >= 250]
+
+watwa_v1 = SimpleNamespace(
+    program_dirs       = program_dirs, # use all generated programs
+    n_samples_inst     = len(program_dirs),   # alle Programme
+    n_samples_per_inst = 50,                   # 50 Szenarien pro Programm
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)
+
+watwa_v2 = SimpleNamespace(
+    program_dirs       = program_dirs, # use all generated programs
+    n_samples_inst     = len(program_dirs),   # alle Programme
+    n_samples_per_inst = 10000,                   # 100k Szenarien pro Programm
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)
+
+watwa_v3 = SimpleNamespace(
+    program_dirs       = program_dirs, # use all generated programs
+    n_samples_inst     = len(program_dirs),   # alle Programme
+    n_samples_per_inst = 50000,                   # 100k Szenarien pro Programm
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)
+
+
+watwa_v5 = SimpleNamespace(
+    program_dirs       = program_dirs,
+    n_samples_inst     = len(program_dirs),
+    n_samples_per_inst = 50000,
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/v5/',
+)
+
+watwa_v6 = SimpleNamespace(
+    program_dirs       = program_dirs,
+    n_samples_inst     = len(program_dirs),
+    n_samples_per_inst = 50000,
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/v6/',
+)
+
+watwa_v7 = SimpleNamespace(
+    program_dirs       = program_dirs,
+    n_samples_inst     = len(program_dirs),
+    n_samples_per_inst = 100000,
+    time_limit         = 60,
+    mip_gap            = 0.01,
+    verbose            = 0,
+    threads            = 1,
+    tr_split           = 0.80,
+    seed               = 7,
+    data_path          = './data/',
+)

@@ -176,104 +176,150 @@ class SetBasedNetwork(nn.Module):
 
 
 
+import torch
+import torch.nn as nn
+ 
+ 
 class SetInstanceEncodingNetwork(nn.Module):
-    """   Set based instance endoging network.  """
-    def __init__(self, instance_decision_embedder, final_instance_embedder, value_predictor, agg_type, use_coef, problem, approx_type):
-        """ Constructor for SetBasedNetwork net. """
+    """Set based instance encoding network with MIP-compatible
+    cross-switch-point context (context-sum) instead of attention."""
+ 
+    def __init__(
+        self,
+        instance_decision_embedder,
+        final_instance_embedder,
+        value_predictor,
+        agg_type,
+        use_coef,
+        problem,
+        approx_type,
+        use_context=False,
+        context_proj=None,
+    ):
+        """Constructor for SetInstanceEncodingNetwork.
+ 
+        New args
+        --------
+        use_context : bool
+            If True, computes for each switch point the leave-one-out sum
+            of decision features over all OTHER switch points ("context"),
+            projects it through context_proj, and concatenates it with
+            that switch point's own features before the value predictor.
+            MIP-compatible replacement for attention-based interaction
+            (no softmax involved).
+        context_proj : FeedForwardBase or None
+            Linear(+ReLU) projection applied to the raw context sum.
+            Must be provided (not None) if use_context=True. Built the
+            same way as value_predictor, so it is exportable via
+            get_grb_net() / add_predictor_constr exactly like the other
+            sub-networks.
+        """
         super(SetInstanceEncodingNetwork, self).__init__()
         self.instance_decision_embedder = instance_decision_embedder
         self.final_instance_embedder = final_instance_embedder
-
-        self.value_predictor = value_predictor # per decision value predictor
-
+        self.value_predictor = value_predictor  # per decision value predictor
+ 
         self.agg_type = agg_type
         self.use_coef = use_coef
-
+ 
         self.problem = problem
         self.approx_type = approx_type
-
-
-    def forward(self, x_inst_features, x_decisions_features, x_decision, p, fs_size = None, print_embedding = False):
-        """   """
+ 
+        self.use_context = use_context
+        self.context_proj = context_proj
+        if self.use_context and self.context_proj is None:
+            raise ValueError("use_context=True requires context_proj to be provided.")
+ 
+    def forward(
+        self,
+        x_inst_features,
+        x_decisions_features,
+        x_decision,
+        p,
+        fs_size=None,
+        print_embedding=False,
+    ):
+        """ """
         # embed instance information
         x_inst_embedding = self.instance_decision_embedder(x_inst_features)
         x_inst_embedding = self.aggregate(x_inst_embedding, self.agg_type, fs_size)
         x_inst_embedding = self.final_instance_embedder(x_inst_embedding)
-        # x_inst_embedding = 0 * x_inst_embedding # do not do this!
         if print_embedding:
             print(x_inst_embedding)
-
-        # remove final singleton dimenaions
-        x_inst_embedding = x_inst_embedding.reshape(x_inst_embedding.shape[0], x_inst_embedding.shape[1])
-
-        # broadcast instance to number of decisions
-        x_inst_embedding = x_inst_embedding[:, None, :].repeat(1, x_inst_features.shape[1], 1)
-
-        # concatenate decision features and instance embedding
-        x_decisions_features = torch.cat([x_decisions_features, x_inst_embedding], axis=2)
-
-        # compute (1-x) * features
-        # only used for kp or general binary interdiction problems
+ 
+        x_inst_embedding = x_inst_embedding.reshape(
+            x_inst_embedding.shape[0], x_inst_embedding.shape[1]
+        )
+ 
+        x_inst_embedding = x_inst_embedding[:, None, :].repeat(
+            1, x_inst_features.shape[1], 1
+        )
+ 
+        x_decisions_features = torch.cat(
+            [x_decisions_features, x_inst_embedding], axis=2
+        )
+ 
         if "kp" in self.problem:
-            # broadcast decision to feature space
-            x_decision = x_decision[:, :, None].repeat(1, 1, x_decisions_features.shape[-1])
+            x_decision = x_decision[:, :, None].repeat(
+                1, 1, x_decisions_features.shape[-1]
+            )
             x_decisions_features = torch.mul(1 - x_decision, x_decisions_features)
-
+ 
+        # --- Cross-switch-point context (MIP-compatible) ---
+        # context_i = sum_j(x_decisions_features[j]) - x_decisions_features[i]
+        # i.e. leave-one-out sum, computed via one total-sum reduction.
+        if self.use_context:
+            total_sum = torch.sum(x_decisions_features, dim=1, keepdim=True)
+            context = total_sum - x_decisions_features  # (batch, s, feat_dim)
+            context = self.context_proj(context)        # (batch, s, context_hidden_dim)
+            x_decisions_features = torch.cat([x_decisions_features, context], axis=2)
+ 
         # value function prediction
         pred_per_decision = self.value_predictor(x_decisions_features)
-
-        # reshape to exclude singleton dimension
-        pred_per_decision = pred_per_decision.reshape(pred_per_decision.shape[0], pred_per_decision.shape[1])
-
-        ## Problem-specific final computation
-
-        # for knapsack or general linear coefficients
+        pred_per_decision = pred_per_decision.reshape(
+            pred_per_decision.shape[0], pred_per_decision.shape[1]
+        )
+ 
         if "kp" in self.problem:
             out = torch.sum(torch.mul(pred_per_decision, p), dim=1)
-
-        # for dr, todo: potentially think about adding a bias term
+ 
         if "dr" in self.problem:
-            # out = torch.sum(torch.mul(pred_per_decision, p), dim=1)
             if self.approx_type == "upper":
-                out = torch.sum(torch.mul(pred_per_decision, p[:,:,0]), dim=1)
+                out = torch.sum(torch.mul(pred_per_decision, p[:, :, 0]), dim=1)
             elif self.approx_type == "lower":
-                # compute v0 * (Br - pred @ c)
-                pred_1 = torch.sum(torch.mul(pred_per_decision, p[:,:,0]))
-                pred_2 = p[:,0,1] * (p[:,0,3] - torch.sum(torch.mul(pred_per_decision, p[:,:,2])))
+                pred_1 = torch.sum(torch.mul(pred_per_decision, p[:, :, 0]))
+                pred_2 = p[:, 0, 1] * (
+                    p[:, 0, 3] - torch.sum(torch.mul(pred_per_decision, p[:, :, 2]))
+                )
                 out = pred_1 + pred_2
-
-        # for critical node game or other bilinear coefficeints
-        # note that other bilinear problems will likely need to be modified depending on follower objective
-        # todo: predicting output dim of (n,2) and multiplying might actually make more sense here.
+ 
         elif "cng" in self.problem:
             if self.approx_type == "lower":
-                pred_1 = torch.sum(torch.mul(1 - pred_per_decision, p[:,0,:]), dim=1)
-                pred_2 = torch.sum(torch.mul(pred_per_decision, p[:,1,:]), dim=1)
-                pred_3 = torch.sum(torch.mul(pred_per_decision, p[:,2,:]), dim=1)
+                pred_1 = torch.sum(torch.mul(1 - pred_per_decision, p[:, 0, :]), dim=1)
+                pred_2 = torch.sum(torch.mul(pred_per_decision, p[:, 1, :]), dim=1)
+                pred_3 = torch.sum(torch.mul(pred_per_decision, p[:, 2, :]), dim=1)
                 out = pred_1 + pred_2 + pred_3
             else:
-                pred_1 = torch.sum(torch.mul(1 - pred_per_decision, p[:,0,:]), dim=1)
-                pred_2 = torch.sum(torch.mul(pred_per_decision, p[:,1,:]), dim=1)
-                pred_3 = torch.sum(torch.mul(1 - pred_per_decision, p[:,2,:]), dim=1)
-                pred_4 = torch.sum(torch.mul(pred_per_decision, p[:,3,:]), dim=1)
+                pred_1 = torch.sum(torch.mul(1 - pred_per_decision, p[:, 0, :]), dim=1)
+                pred_2 = torch.sum(torch.mul(pred_per_decision, p[:, 1, :]), dim=1)
+                pred_3 = torch.sum(torch.mul(1 - pred_per_decision, p[:, 2, :]), dim=1)
+                pred_4 = torch.sum(torch.mul(pred_per_decision, p[:, 3, :]), dim=1)
                 out = pred_1 + pred_2 + pred_3 + pred_4
-
+ 
+        if "watwa" in self.problem:
+            out = torch.sum(pred_per_decision, dim=1)
+ 
         return out
-
-
-    def aggregate(self, x, agg_type, fs_size = None):
-        """ Aggregates tensors output from network. """
+ 
+    def aggregate(self, x, agg_type, fs_size=None):
+        """Aggregates tensors output from network."""
         if agg_type == "mean":
-            if fs_size is None: # set default to being size of tensor
+            if fs_size is None:
                 fs_size = x.shape[1]
-
-            # take true mean by summing, then dividing by first-stage dimensions
             x = torch.sum(x, axis=1)
             x = torch.div(x, fs_size.unsqueeze(1))
-
         elif agg_type == "sum":
             x = torch.sum(x, 1)
-
         return x
 
 
