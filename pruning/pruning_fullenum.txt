@@ -1,0 +1,689 @@
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2544475
+Academic license 2544475 - for non-commercial use only - registered to to___@fau.de
+Read LP format model from file /tmp/gen_0004_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0004_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0004_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0009_fe_0.01.lp
+Reading time = 0.00 seconds
+: 156 rows, 170 columns, 629 nonzeros
+Read LP format model from file /tmp/gen_0009_fe_0.05.lp
+Reading time = 0.00 seconds
+: 156 rows, 170 columns, 629 nonzeros
+Read LP format model from file /tmp/gen_0009_fe_0.1.lp
+Reading time = 0.00 seconds
+: 156 rows, 170 columns, 629 nonzeros
+Read LP format model from file /tmp/gen_0034_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0034_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0034_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0064_fe_0.01.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0064_fe_0.05.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0064_fe_0.1.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0069_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0069_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0069_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0081_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0081_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0081_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0094_fe_0.01.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0094_fe_0.05.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0094_fe_0.1.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0102_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0102_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0102_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0123_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0123_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0123_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0129_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0129_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0129_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0145_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0145_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0145_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0152_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0152_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0152_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0179_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0179_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0179_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0191_fe_0.01.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0191_fe_0.05.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0191_fe_0.1.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0217_fe_0.01.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0217_fe_0.05.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0217_fe_0.1.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0227_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0227_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0227_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0231_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0231_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0231_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0251_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0251_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0251_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0278_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0278_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0278_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0289_fe_0.01.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0289_fe_0.05.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0289_fe_0.1.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+Read LP format model from file /tmp/gen_0297_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0297_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0297_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0313_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0313_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0313_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0327_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0327_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0327_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0344_fe_0.01.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0344_fe_0.05.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0344_fe_0.1.lp
+Reading time = 0.00 seconds
+: 126 rows, 142 columns, 521 nonzeros
+Read LP format model from file /tmp/gen_0351_fe_0.01.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0351_fe_0.05.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0351_fe_0.1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+Read LP format model from file /tmp/gen_0002_fe_0.01.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0002_fe_0.05.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0002_fe_0.1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0018_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0018_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0018_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0026_fe_0.01.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0026_fe_0.05.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0026_fe_0.1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0042_fe_0.01.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0042_fe_0.05.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0042_fe_0.1.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0061_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0061_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0061_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0076_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0076_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0076_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0114_fe_0.01.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0114_fe_0.05.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0114_fe_0.1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0138_fe_0.01.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0138_fe_0.05.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0138_fe_0.1.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0155_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0155_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0155_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0163_fe_0.01.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0163_fe_0.05.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0163_fe_0.1.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0175_fe_0.01.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0175_fe_0.05.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0175_fe_0.1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0216_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0216_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0216_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0236_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0236_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0236_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0249_fe_0.01.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0249_fe_0.05.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0249_fe_0.1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0262_fe_0.01.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0262_fe_0.05.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0262_fe_0.1.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0287_fe_0.01.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0287_fe_0.05.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0287_fe_0.1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0304_fe_0.01.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0304_fe_0.05.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0304_fe_0.1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+Read LP format model from file /tmp/gen_0319_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0319_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0319_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0357_fe_0.01.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0357_fe_0.05.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0357_fe_0.1.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0374_fe_0.01.lp
+Reading time = 0.00 seconds
+: 189 rows, 210 columns, 784 nonzeros
+Read LP format model from file /tmp/gen_0374_fe_0.05.lp
+Reading time = 0.00 seconds
+: 189 rows, 210 columns, 784 nonzeros
+Read LP format model from file /tmp/gen_0374_fe_0.1.lp
+Reading time = 0.00 seconds
+: 189 rows, 210 columns, 784 nonzeros
+Read LP format model from file /tmp/gen_0391_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0391_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0391_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0404_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0404_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0404_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0416_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0416_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0416_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0437_fe_0.01.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0437_fe_0.05.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0437_fe_0.1.lp
+Reading time = 0.00 seconds
+: 174 rows, 196 columns, 730 nonzeros
+Read LP format model from file /tmp/gen_0449_fe_0.01.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0449_fe_0.05.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0449_fe_0.1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+Read LP format model from file /tmp/gen_0011_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0011_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0011_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0029_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0029_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0029_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0059_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0059_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0059_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0086_fe_0.01.lp
+Reading time = 0.00 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0086_fe_0.05.lp
+Reading time = 0.01 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0086_fe_0.1.lp
+Reading time = 0.02 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0098_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0098_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0098_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0110_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0110_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0110_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0124_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0124_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0124_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0139_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0139_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0139_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0167_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0167_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0167_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0182_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0182_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0182_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0204_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0204_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0204_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0220_fe_0.01.lp
+Reading time = 0.00 seconds
+: 222 rows, 250 columns, 939 nonzeros
+Read LP format model from file /tmp/gen_0220_fe_0.05.lp
+Reading time = 0.01 seconds
+: 222 rows, 250 columns, 939 nonzeros
+Read LP format model from file /tmp/gen_0220_fe_0.1.lp
+Reading time = 0.02 seconds
+: 222 rows, 250 columns, 939 nonzeros
+Read LP format model from file /tmp/gen_0235_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0235_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0235_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0253_fe_0.01.lp
+Reading time = 0.00 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0253_fe_0.05.lp
+Reading time = 0.01 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0253_fe_0.1.lp
+Reading time = 0.02 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0260_fe_0.01.lp
+Reading time = 0.00 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0260_fe_0.05.lp
+Reading time = 0.01 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0260_fe_0.1.lp
+Reading time = 0.02 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0285_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0285_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0285_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0307_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0307_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0307_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0322_fe_0.01.lp
+Reading time = 0.00 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0322_fe_0.05.lp
+Reading time = 0.01 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0322_fe_0.1.lp
+Reading time = 0.02 seconds
+: 207 rows, 236 columns, 885 nonzeros
+Read LP format model from file /tmp/gen_0332_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0332_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0332_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0346_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0346_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0346_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0362_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0362_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0362_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0400_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0400_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0400_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0413_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0413_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0413_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0419_fe_0.01.lp
+Reading time = 0.00 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0419_fe_0.05.lp
+Reading time = 0.01 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0419_fe_0.1.lp
+Reading time = 0.02 seconds
+: 192 rows, 222 columns, 831 nonzeros
+Read LP format model from file /tmp/gen_0431_fe_0.01.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0431_fe_0.05.lp
+Reading time = 0.01 seconds
+: 177 rows, 208 columns, 777 nonzeros
+Read LP format model from file /tmp/gen_0431_fe_0.1.lp
+Reading time = 0.02 seconds
+: 177 rows, 208 columns, 777 nonzeros
+bucket            keep%    n   recall%   mean_kept_n  mean_speedup  median_speedup
+[100-1000]           1%   25       4.0           7.0         354.8x           311.9x
+[100-1000]           5%   25      12.0          36.0          53.4x            50.7x
+[100-1000]          10%   25      40.0          72.0          18.5x            19.1x
+[1000-10000]         1%   25       4.0          65.0        1530.3x          1482.4x
+[1000-10000]         5%   25       8.0         328.0          27.9x            27.4x
+[1000-10000]        10%   25       8.0         656.0          20.4x            20.2x
+[10000-inf]          1%   25      32.0         590.0         102.8x            83.2x
+[10000-inf]          5%   25      32.0        2952.0          18.3x            20.8x
+[10000-inf]         10%   25      32.0        5904.0           1.3x             1.3x

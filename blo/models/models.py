@@ -21,8 +21,27 @@ class PrintLayer(nn.Module):
 
 class FeedForwardBase(nn.Module):
     """ Standard feed forward network, with some slight Gurobi specific functions. """
-    def __init__(self, input_dim, hidden_dims, output_dim, output_relu=False, dropout=0.0, bias=True, name="net"):
-        """ Constructor for feed-forward net. """
+    def __init__(self, input_dim, hidden_dims, output_dim, output_relu=False, dropout=0.0, bias=True, name="net",
+                 activation="relu", leaky_relu_slope=0.01):
+        """ Constructor for feed-forward net.
+
+        New args
+        --------
+        activation : str
+            Which activation to use between layers: "relu" (default,
+            unchanged behavior) or "leaky_relu". Motivated by a dying-ReLU
+            collapse observed empirically in instance_decision_embedder and
+            final_instance_embedder during training (see
+            check_dead_at_init.py / check_scale_mismatch.py: healthy
+            ~48-53% dead at random init, but the trained checkpoint reached
+            ~97-100% dead across every switch-point-count bucket). Unlike
+            plain ReLU, LeakyReLU has a nonzero gradient for negative
+            inputs, so a neuron that drifts negative during training can
+            still receive gradient and recover instead of being permanently
+            silenced.
+        leaky_relu_slope : float
+            Negative-side slope for LeakyReLU (ignored if activation="relu").
+        """
         super(FeedForwardBase, self).__init__()
 
         self.input_dim = input_dim
@@ -32,10 +51,24 @@ class FeedForwardBase(nn.Module):
         self.dropout = dropout
         self.bias = bias
         self.name = name
+        self.activation = activation
+        self.leaky_relu_slope = leaky_relu_slope
+
+        def make_activation():
+            if activation == "leaky_relu":
+                return nn.LeakyReLU(negative_slope=leaky_relu_slope)
+            elif activation == "relu":
+                return nn.ReLU()
+            elif activation == "gelu":
+                return nn.GELU()
+            elif activation == "silu":
+                return nn.SiLU()
+            else:
+                raise ValueError(f"Unknown activation: {activation!r} (expected 'relu', 'leaky_relu', 'gelu', or 'silu')")
 
         layers = collections.OrderedDict()
         layers[f"{self.name}_in"] = nn.Linear(input_dim, hidden_dims[0], bias=self.bias)
-        layers[f"{self.name}_act_in"] = nn.ReLU()
+        layers[f"{self.name}_act_in"] = make_activation()
         
         if len(hidden_dims) == 1:
             if self.dropout:
@@ -44,13 +77,13 @@ class FeedForwardBase(nn.Module):
         else:
             for i in range(len(hidden_dims) - 1):
                 layers[f"{self.name}_{i}"] = nn.Linear(hidden_dims[i], hidden_dims[i + 1])
-                layers[f"{self.name}_act_{i}"] = nn.ReLU()
+                layers[f"{self.name}_act_{i}"] = make_activation()
                 if self.dropout:
-                    layers[f"relu_drop_in"] = nn.Dropout(self.dropout)
+                    layers[f"{self.name}_drop_{i}"] = nn.Dropout(self.dropout)
 
         if output_relu:
             layers[f"{self.name}_out"] = nn.Linear(hidden_dims[-1], output_dim, bias=self.bias)
-            layers[f"{self.name}_out_relu"] = nn.ReLU()
+            layers[f"{self.name}_out_relu"] = make_activation()
         else:
             layers[f"{self.name}_out"] = nn.Linear(hidden_dims[-1], output_dim, bias=self.bias)
 
@@ -74,8 +107,17 @@ class FeedForwardBase(nn.Module):
         
         for name, layer in self.layers.items():
 
-            # add ReLU layers to list
-            if type(layer) == torch.nn.modules.activation.ReLU:
+            # add ReLU / LeakyReLU layers to list.
+            # ACHTUNG: LeakyReLU ist zwar wie ReLU stueckweise-linear und
+            # damit GRUNDSAETZLICH MIP-repraesentierbar, aber ob gurobi-ml's
+            # add_predictor_constr() sie tatsaechlich unterstuetzt, ist NICHT
+            # verifiziert (nur ReLU war bisher in diesem Projekt im Einsatz).
+            # Vor einer Wiederverwendung des Surrogate-MIP-Pfads (Chapter 5)
+            # mit activation="leaky_relu" unbedingt zuerst pruefen, ob
+            # gurobi-ml den Layer-Typ erkennt -- sonst wird er hier zwar
+            # mitgenommen, aber add_predictor_constr() koennte ihn intern
+            # ignorieren oder einen Fehler werfen.
+            if type(layer) in (torch.nn.modules.activation.ReLU, torch.nn.modules.activation.LeakyReLU):
                 grb_layers[name] = layer
 
             # remove dropout layer by skipping
@@ -195,6 +237,7 @@ class SetInstanceEncodingNetwork(nn.Module):
         approx_type,
         use_context=False,
         context_proj=None,
+        use_inst_embedding_norm=False,
     ):
         """Constructor for SetInstanceEncodingNetwork.
  
@@ -213,6 +256,19 @@ class SetInstanceEncodingNetwork(nn.Module):
             same way as value_predictor, so it is exportable via
             get_grb_net() / add_predictor_constr exactly like the other
             sub-networks.
+        use_inst_embedding_norm : bool
+            If True, applies LayerNorm to the aggregated instance embedding
+            (output of instance_decision_embedder + sum/mean aggregation)
+            BEFORE it is passed into final_instance_embedder. Mitigates a
+            dying-ReLU failure mode: the aggregated embedding's scale grows
+            with the number of switch points s (aggregation sums over s
+            terms), and final_instance_embedder's bottleneck layer was
+            found to collapse to ~100% dead ReLUs across ALL s during
+            training (while healthy at random init, ~48-53% dead) --
+            consistent with a self-reinforcing dying-ReLU spiral rather
+            than an architectural or initialization defect. LayerNorm
+            re-centers the input to this layer on every forward pass,
+            independent of how its scale evolves during training.
         """
         super(SetInstanceEncodingNetwork, self).__init__()
         self.instance_decision_embedder = instance_decision_embedder
@@ -230,6 +286,27 @@ class SetInstanceEncodingNetwork(nn.Module):
         if self.use_context and self.context_proj is None:
             raise ValueError("use_context=True requires context_proj to be provided.")
  
+        self.use_inst_embedding_norm = use_inst_embedding_norm
+        if self.use_inst_embedding_norm:
+            # Normalization dim = output_dim of instance_decision_embedder,
+            # i.e. the size of the aggregated instance embedding h1_agg.
+            agg_dim = instance_decision_embedder.output_dim
+            self.inst_embedding_norm = nn.LayerNorm(agg_dim)
+            # WICHTIG: instance_decision_embedder/final_instance_embedder/
+            # value_predictor werden in 03_train_nn.py VOR dem Konstruktor-
+            # Aufruf einzeln per .to(device) auf die GPU verschoben; es gibt
+            # dort keinen globalen net.to(device)-Aufruf danach. Ein hier neu
+            # erzeugtes nn.LayerNorm bliebe daher auf der CPU, waehrend der
+            # Rest des Netzes auf der GPU laeuft -- explizit auf dasselbe
+            # Device wie instance_decision_embedder verschieben, um das
+            # "Expected all tensors to be on the same device"-Problem zu
+            # vermeiden, unabhaengig davon, ob CPU oder GPU verwendet wird.
+            try:
+                target_device = next(instance_decision_embedder.parameters()).device
+                self.inst_embedding_norm = self.inst_embedding_norm.to(target_device)
+            except StopIteration:
+                pass  # instance_decision_embedder hat keine Parameter (sollte nicht vorkommen)
+ 
     def forward(
         self,
         x_inst_features,
@@ -243,6 +320,8 @@ class SetInstanceEncodingNetwork(nn.Module):
         # embed instance information
         x_inst_embedding = self.instance_decision_embedder(x_inst_features)
         x_inst_embedding = self.aggregate(x_inst_embedding, self.agg_type, fs_size)
+        if self.use_inst_embedding_norm:
+            x_inst_embedding = self.inst_embedding_norm(x_inst_embedding)
         x_inst_embedding = self.final_instance_embedder(x_inst_embedding)
         if print_embedding:
             print(x_inst_embedding)
@@ -321,7 +400,3 @@ class SetInstanceEncodingNetwork(nn.Module):
         elif agg_type == "sum":
             x = torch.sum(x, 1)
         return x
-
-
-
-

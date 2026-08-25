@@ -227,7 +227,9 @@ def main(args):
               f"hits={np.mean(hits)*100:.1f}%")
 
     # Save full results
-    out_path = os.path.join(cfg.data_path, "watwa", "results", f"batch_eval_{args.problem}.pkl")
+    import time as _time
+    _ts = _time.strftime("%Y%m%d_%H%M")
+    out_path = os.path.join(cfg.data_path, "watwa", "results", f"batch_eval_{args.problem}_{_ts}.pkl")
     pickle.dump(metrics, open(out_path, "wb"))
     print(f"\nFull results saved to: {out_path}")
 

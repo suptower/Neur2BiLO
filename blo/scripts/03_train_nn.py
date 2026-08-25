@@ -4,10 +4,12 @@ import time
 import copy
 import argparse
 import collections
+import datetime
 import numpy as np
 import pandas as pd
 import pickle as pkl
 from scipy import stats 
+import os
 
 # gurobi
 import gurobipy as gp
@@ -176,7 +178,15 @@ def get_nn_param_str(args, params):
         nn_param_str += f"in-ero-{params['inst_embed_relu_output']}_"
         nn_param_str += f"in-pro-{params['inst_post_agg_relu_output']}_"
         nn_param_str += f"in-vro-{params['inst_value_relu_output']}_"
-        nn_param_str += f"in-a-{params['inst_agg_type']}"
+        nn_param_str += f"in-a-{params['inst_agg_type']}_"
+        # Diese beiden Flags fehlten bisher komplett im Dateinamen, obwohl sie
+        # das Verhalten des Netzes grundlegend aendern (siehe LayerNorm-Fix
+        # gegen das Dying-ReLU-Problem in final_instance_embedder) -- ohne sie
+        # erzeugten zwei architektonisch verschiedene Laeufe denselben
+        # Dateinamen und ueberschrieben sich gegenseitig stillschweigend.
+        nn_param_str += f"in-ctx-{int(bool(params.get('use_context', False)))}_"
+        nn_param_str += f"in-ln-{int(bool(params.get('use_inst_embedding_norm', False)))}_"
+        nn_param_str += f"in-act-{params.get('activation', 'relu')}"
 
     return nn_param_str
 
@@ -200,23 +210,46 @@ def main(args):
     get_path = factory_get_path(args)
     fp_data = get_path(cfg.data_path, cfg, "ml_data")
 
-    # load data
-    print("Loading data for machine learning ... ")
-    with open(fp_data, 'rb') as pf:
-        dataset = pkl.load(pf)
-
-    # preprocess data
-    print("Preprocessing data  ... ")
+    # load data — use precomputed compact .npz if available (avoids the
+    # RAM-heavy raw-pickle load + get_inst_encoder_dataset pass, see
+    # convert_ml_data.py). Falls back to the original path otherwise.
+    fp_compact = str(fp_data).replace(".pkl", "_compact.npz")
     data_preprocessor = factory_dp(args, args.model_type, args.approx_type, args.problem, device)
 
-    if args.scale_labels and args.problem in ["watwa"]:
-        print("  Scaling labels for watwa ...")
-        data_preprocessor.get_label_scalers(dataset['tr_data'] + dataset['val_data'])
-    elif args.scale_labels:
-        print("  Scaling labels ...")
-        data_preprocessor.get_label_scalers(dataset['tr_data'])
+    if os.path.exists(fp_compact) and args.model_type == "inst_encoder":
+        print(f"Loading precomputed compact dataset from {fp_compact} ... ")
+        npz = np.load(fp_compact)
 
-    tr_dataset, val_dataset = data_preprocessor.preprocess_data(dataset['tr_data'], dataset['val_data'])
+        def _mk_dataset(prefix):
+            tensors = [
+                torch.from_numpy(npz[f"{prefix}_inst_features"]).float().to(device),
+                torch.from_numpy(npz[f"{prefix}_decision_features"]).float().to(device),
+                torch.from_numpy(npz[f"{prefix}_decisions"]).float().to(device),
+                torch.from_numpy(npz[f"{prefix}_n_decisions"]).float().to(device),
+                torch.from_numpy(npz[f"{prefix}_labels"]).float().to(device),
+                torch.from_numpy(npz[f"{prefix}_inst_ids"]).float().to(device),
+            ]
+            return TensorDataset(*tensors)
+
+        tr_dataset = _mk_dataset("tr")
+        val_dataset = _mk_dataset("val")
+        dataset = None  # raw dataset not loaded — only used below for scale_labels, unsupported in this fast path
+        if args.scale_labels:
+            raise NotImplementedError("--scale_labels requires the raw .pkl dataset; delete the _compact.npz or disable scale_labels")
+    else:
+        print("Loading data for machine learning ... ")
+        with open(fp_data, 'rb') as pf:
+            dataset = pkl.load(pf)
+
+        print("Preprocessing data  ... ")
+        if args.scale_labels and args.problem in ["watwa"]:
+            print("  Scaling labels for watwa ...")
+            data_preprocessor.get_label_scalers(dataset['tr_data'] + dataset['val_data'])
+        elif args.scale_labels:
+            print("  Scaling labels ...")
+            data_preprocessor.get_label_scalers(dataset['tr_data'])
+
+        tr_dataset, val_dataset = data_preprocessor.preprocess_data(dataset['tr_data'], dataset['val_data'])
 
     # create train/validation loaders
     # Instanz-gruppierter Sampler für Ranking-Loss
@@ -334,6 +367,8 @@ def main(args):
             output_relu = args.inst_embed_relu_output,
             dropout = args.dropout,
             bias = False,
+            activation = args.activation,
+            leaky_relu_slope = args.leaky_relu_slope,
             name="instance_decision_embedder")
  
         final_instance_embedder = FeedForwardBase(
@@ -343,6 +378,8 @@ def main(args):
             output_relu = args.inst_post_agg_relu_output,
             dropout = args.dropout,
             bias = True,
+            activation = args.activation,
+            leaky_relu_slope = args.leaky_relu_slope,
             name="final_instance_embedder")
  
         # raw per-switch-point feature dim BEFORE context concat
@@ -360,6 +397,8 @@ def main(args):
                 output_relu = args.context_relu_output,
                 dropout = args.dropout,
                 bias = True,
+                activation = args.activation,
+                leaky_relu_slope = args.leaky_relu_slope,
                 name = "context_proj")
             context_proj.to(device)
  
@@ -374,6 +413,8 @@ def main(args):
             output_relu = args.inst_value_relu_output,
             dropout = args.dropout,
             bias = True,
+            activation = args.activation,
+            leaky_relu_slope = args.leaky_relu_slope,
             name = "value")
  
         instance_decision_embedder.to(device)
@@ -389,7 +430,8 @@ def main(args):
             problem = args.problem,
             approx_type = args.approx_type,
             use_context = bool(args.use_context),
-            context_proj = context_proj)
+            context_proj = context_proj,
+            use_inst_embedding_norm = bool(args.use_inst_embedding_norm))
 
     else:
         raise Exception("No other model_types implemented")
@@ -408,18 +450,16 @@ def main(args):
     # sein Beitrag zu den Bounds waechst also mit s -- bei grossen Instanzen war
     # das bisher der dominante, unregulierte Anteil.
     if "inst" in args.model_type and args.weight_decay > 0:
-        strong_decay_names = ['value_predictor', 'context_proj']
-        value_param_names = [n for n, p in net.named_parameters()
-                              if any(k in n for k in strong_decay_names)]
+        value_param_names = [n for n, p in net.named_parameters() if 'value_predictor' in n]
         print(f"  [param_groups] {len(value_param_names)} params in strong-decay group:")
         for n in value_param_names:
             print(f"    {n}")
         param_groups = [
             {'params': [p for n, p in net.named_parameters()
-                        if not any(k in n for k in strong_decay_names)],
+                        if 'value_predictor' not in n],
             'weight_decay': args.weight_decay},
             {'params': [p for n, p in net.named_parameters()
-                        if any(k in n for k in strong_decay_names)],
+                        if 'value_predictor' in n],
             'weight_decay': args.weight_decay * 1000},
         ]
         optimizer = Opt(param_groups, lr=args.lr)
@@ -530,6 +570,44 @@ def main(args):
             val_metric_best = val_metric
             best_model = copy.deepcopy(net) # copy.deepcopy(net.state_dict())
 
+            # Emergency-Checkpoint im GLEICHEN Format wie der finale save_data-Block
+            # weiter unten (Submodul-Objekte statt flachem state_dict), damit
+            # load_scoring_net() (eval_no_gurobi.py, pruning_rank_histogram.py,
+            # check_scale_mismatch.py, etc.) den Zwischenstand ohne Sonderfall
+            # laden kann. 'params' existiert an dieser Stelle noch nicht (wird
+            # erst nach der Trainingsschleife gebaut) -- deshalb hier ein
+            # minimales, aber fuer load_scoring_net ausreichendes Params-Dict.
+            emergency_data = {
+                'model_type': args.model_type,
+                'use_coef': args.use_coef,
+                'epoch': epoch,
+                'val_metric_best': val_metric_best,
+                'args': vars(args),
+                'params': {
+                    'set_agg_type': args.set_agg_type,
+                    'inst_agg_type': args.set_agg_type,  # net wird mit set_agg_type gebaut (s.o.)
+                    'use_context': bool(args.use_context),
+                    'use_inst_embedding_norm': bool(args.use_inst_embedding_norm),
+                },
+            }
+            if "inst" in args.model_type:
+                emergency_data["instance_decision_embedder"] = net.instance_decision_embedder
+                emergency_data["final_instance_embedder"] = net.final_instance_embedder
+                emergency_data["value_predictor"] = net.value_predictor
+                if net.use_context:
+                    emergency_data["context_proj"] = net.context_proj
+                if net.use_inst_embedding_norm:
+                    emergency_data["inst_embedding_norm"] = net.inst_embedding_norm
+                    emergency_data["use_inst_embedding_norm"] = True
+            elif "set" in args.model_type:
+                emergency_data["decision_embedder"] = net.decision_embedder
+                emergency_data["value_predictor"] = net.value_predictor
+            elif "ff" in args.model_type:
+                emergency_data["feedforward_net"] = net.feedforward_net
+
+            torch.save(emergency_data, 'data/EMERGENCY_v7_checkpoint.pt')
+            print("    [emergency checkpoint saved: data/EMERGENCY_v7_checkpoint.pt]")
+
             # if model found within last 200 epochs, then increase # of epochs
             if args.n_epochs - epoch < 200:
                 print('    doubling epochs!!!')
@@ -601,6 +679,9 @@ def main(args):
         params["use_context"] = bool(args.use_context)
         params["use_rank_labels"] = bool(args.use_rank_labels)
         params["context_hidden_dim"] = args.context_hidden_dim
+        params["use_inst_embedding_norm"] = bool(args.use_inst_embedding_norm)
+        params["activation"] = args.activation
+        params["leaky_relu_slope"] = args.leaky_relu_slope
         params["ranking_loss_weight"] = args.ranking_loss_weight
 
         params["ranking_loss_k"] = args.ranking_loss_k
@@ -625,6 +706,18 @@ def main(args):
     
     # get parameter string
     param_str = get_nn_param_str(args, params)
+
+    # Timestamp anhaengen, damit zwei Laeufe mit identischen Hyperparametern
+    # (z.B. gleicher bs/lr/architecture, nur ein neues Flag wie
+    # use_inst_embedding_norm dazugeschaltet, das noch nicht in
+    # get_nn_param_str beruecksichtigt wurde -- oder schlicht ein Re-Run mit
+    # anderem Seed) NIE mehr denselben random_search-Dateinamen erzeugen und
+    # sich damit stillschweigend gegenseitig ueberschreiben. Betrifft NUR die
+    # random_search/-Archivkopien unten, NICHT die kurzen Pfade
+    # (nn_..._both_..._s-7.pt), die 05_run_ml_blo.py und die
+    # Evaluations-/Diagnose-Skripte absichtlich unter festem Namen erwarten.
+    run_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    param_str = f"{param_str}__ts-{run_timestamp}"
 
     # save results
     fp_res = get_path(cfg.data_path, cfg, f"random_search/nn_res_{args.model_type}_{args.approx_type}")
@@ -668,6 +761,9 @@ def main(args):
         save_data["value_predictor"] = net.value_predictor
         if net.use_context:
             save_data["context_proj"] = net.context_proj
+        if net.use_inst_embedding_norm:
+            save_data["inst_embedding_norm"] = net.inst_embedding_norm
+            save_data["use_inst_embedding_norm"] = True
 
     torch.save(save_data, fp_net)
 
@@ -757,6 +853,24 @@ if __name__ == '__main__':
 
     parser.add_argument('--use_context', type=int, default=0, help='Whether to use leave-one-out context sum across switch points.')
     parser.add_argument('--context_hidden_dim', type=int, default=32, help='Hidden dimension for context projection (if use_context=1).')
+
+    parser.add_argument('--use_inst_embedding_norm', type=int, default=0,
+                         help='Whether to apply LayerNorm to the aggregated instance embedding '
+                              'before final_instance_embedder. Mitigates a dying-ReLU collapse '
+                              'observed at that bottleneck across all s during training '
+                              '(diagnosed via check_dead_at_init.py / check_scale_mismatch.py: '
+                              '~48-53%% dead at random init, but ~100%% dead after training, '
+                              'for every s bucket tested).')
+
+    parser.add_argument('--activation', type=str, default='relu', choices=['relu', 'leaky_relu', 'gelu', 'silu'],
+                         help="Activation used throughout FeedForwardBase (instance_decision_embedder, "
+                              "final_instance_embedder, context_proj, value_predictor). 'relu' is the "
+                              "historical default. 'leaky_relu' is a candidate fix for the dying-ReLU "
+                              "collapse observed even WITH use_inst_embedding_norm=1 (that fix alone "
+                              "reduced but did not eliminate the collapse, ~97-98%% dead neurons "
+                              "remaining at final_instance_embedder after training).")
+    parser.add_argument('--leaky_relu_slope', type=float, default=0.01,
+                         help='Negative-side slope for LeakyReLU (only used if --activation leaky_relu).')
     parser.add_argument('--context_relu_output', type=int, default=1, help='Indicator for using ReLU on output of context projection.')
 
     parser.add_argument('--ranking_loss_weight', type=float, default=0.0, help='Weight for ranking loss (only used for instance encoder model).')
@@ -775,5 +889,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
-
-

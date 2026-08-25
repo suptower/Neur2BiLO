@@ -1,0 +1,60 @@
+scenarios found: 9
+kept x tuples: [(2, 1)]
+true optimum survives pruning: False
+(0, 0) -> score: 0.1998511552810669
+(1, 0) -> score: 0.18757310509681702
+(2, 0) -> score: -0.19093401730060577
+(0, 1) -> score: 0.18928325176239014
+(1, 1) -> score: 0.17760731279850006
+(2, 1) -> score: -0.27290788292884827
+(0, 2) -> score: 0.3862629532814026
+(1, 2) -> score: 0.313383013010025
+(2, 2) -> score: -0.15135230123996735
+wrote gen_0000_pruned.lp with 1 scenarios
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2544475
+Academic license 2544475 - for non-commercial use only - registered to to___@fau.de
+Read LP format model from file gen_0000_pruned.lp
+Reading time = 0.00 seconds
+: 45 rows, 48 columns, 157 nonzeros
+Gurobi Optimizer version 13.0.2 build v13.0.2rc1 (linux64 - "Debian GNU/Linux 13 (trixie)")
+
+CPU model: AMD Ryzen 9 9950X 16-Core Processor, instruction set [SSE2|AVX|AVX2|AVX512]
+Thread count: 16 physical cores, 32 logical processors, using up to 32 threads
+
+Academic license 2544475 - for non-commercial use only - registered to to___@fau.de
+Optimize a model with 45 rows, 48 columns and 157 nonzeros (Max)
+Model fingerprint: 0x56613af8
+Model has 1 linear objective coefficients
+Variable types: 1 continuous, 47 integer (0 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+06]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [0e+00, 0e+00]
+  RHS range        [1e+00, 1e+00]
+
+Solving a multi-scenario model with 1 scenarios...
+
+Presolve removed 46 rows and 48 columns
+Presolve time: 0.00s
+Presolved: 0 rows, 1 columns, 0 nonzeros
+Presolved model has 1 scenario(s)
+Variable types: 0 continuous, 1 integer (1 binary)
+
+Root relaxation: objective 4.130690e+06, 0 iterations, 0.00 seconds (0.00 work units)
+Scenario 0 has been solved. 0/1 scenarios left.
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+*    0     0               0    4130690.4877 4130690.49  0.00%     -    0s
+
+Explored 1 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 32 (of 32 available processors)
+
+Solution count 1: 4.13069e+06 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 4.130690487678e+06, best bound 4.130690487678e+06, gap 0.0000%
+pruned solve objective: 4130690.487678 | solve time: 0.0011379718780517578 s

@@ -1,0 +1,125 @@
+instance                          n_scen   s  keep  kept_n  recall      gap%  t_pruned    t_full
+Set parameter WLSAccessID
+Set parameter WLSSecret
+Set parameter LicenseID to value 2544475
+Academic license 2544475 - for non-commercial use only - registered to to___@fau.de
+Read LP format model from file /tmp/gen_0004_pruned_k1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+programs/generated/gen_0004          729   6     1       1   False    0.0299    0.1501      0.34
+Read LP format model from file /tmp/gen_0004_pruned_k2.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+programs/generated/gen_0004          729   6     2      64    True    0.0000    0.0108      0.34
+Read LP format model from file /tmp/gen_0097_pruned_k1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+programs/generated/gen_0097          729   6     1       1   False    2.0291    0.0008      0.30
+Read LP format model from file /tmp/gen_0097_pruned_k2.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+programs/generated/gen_0097          729   6     2      64   False    2.0063    0.0150      0.30
+Read LP format model from file /tmp/gen_0185_pruned_k1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+programs/generated/gen_0185          729   6     1       1   False    9.2898    0.0008      0.30
+Read LP format model from file /tmp/gen_0185_pruned_k2.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+programs/generated/gen_0185          729   6     2      64   False    9.2689    0.0172      0.30
+Read LP format model from file /tmp/gen_0289_pruned_k1.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+programs/generated/gen_0289          729   6     1       1   False    0.0045    0.0011      1.00
+Read LP format model from file /tmp/gen_0289_pruned_k2.lp
+Reading time = 0.00 seconds
+: 141 rows, 156 columns, 575 nonzeros
+programs/generated/gen_0289          729   6     2      64    True    0.0000    0.0246      1.00
+Read LP format model from file /tmp/gen_0370_pruned_k1.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+programs/generated/gen_0370          729   6     1       1   False    0.0379    0.0010      0.46
+Read LP format model from file /tmp/gen_0370_pruned_k2.lp
+Reading time = 0.00 seconds
+: 111 rows, 128 columns, 467 nonzeros
+programs/generated/gen_0370          729   6     2      64    True    0.0000    0.0172      0.46
+Read LP format model from file /tmp/gen_0002_pruned_k1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+programs/generated/gen_0002         6561   8     1       1   False    8.2344    0.0010      3.88
+Read LP format model from file /tmp/gen_0002_pruned_k2.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+programs/generated/gen_0002         6561   8     2     256   False    8.2026    0.0382      3.88
+Read LP format model from file /tmp/gen_0076_pruned_k1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+programs/generated/gen_0076         6561   8     1       1   False    0.3910    0.0014      4.54
+Read LP format model from file /tmp/gen_0076_pruned_k2.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+programs/generated/gen_0076         6561   8     2     256   False    0.3852    0.0421      4.54
+Read LP format model from file /tmp/gen_0175_pruned_k1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+programs/generated/gen_0175         6561   8     1       1   False    0.0232    0.0013      4.04
+Read LP format model from file /tmp/gen_0175_pruned_k2.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+programs/generated/gen_0175         6561   8     2     256    True    0.0000    0.0356      4.04
+Read LP format model from file /tmp/gen_0287_pruned_k1.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+programs/generated/gen_0287         6561   8     1       1   False    6.3301    0.0011      4.16
+Read LP format model from file /tmp/gen_0287_pruned_k2.lp
+Reading time = 0.00 seconds
+: 144 rows, 168 columns, 622 nonzeros
+programs/generated/gen_0287         6561   8     2     256   False    6.3078    0.0357      4.16
+Read LP format model from file /tmp/gen_0391_pruned_k1.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+programs/generated/gen_0391         6561   8     1       1   False    0.4954    0.0012      3.90
+Read LP format model from file /tmp/gen_0391_pruned_k2.lp
+Reading time = 0.00 seconds
+: 159 rows, 182 columns, 676 nonzeros
+programs/generated/gen_0391         6561   8     2     256   False    0.4894    0.0422      3.90
+Read LP format model from file /tmp/gen_0011_pruned_k1.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+programs/generated/gen_0011        59049  10     1       1   False    0.0250    0.0013     35.97
+Read LP format model from file /tmp/gen_0011_pruned_k2.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+programs/generated/gen_0011        59049  10     2    1024    True   -0.0000    0.1975     35.97
+Read LP format model from file /tmp/gen_0122_pruned_k1.lp
+Reading time = 0.00 seconds
+: 237 rows, 264 columns, 993 nonzeros
+programs/generated/gen_0122        59049  10     1       1   False    0.0098    0.0017     77.39
+Read LP format model from file /tmp/gen_0122_pruned_k2.lp
+Reading time = 0.00 seconds
+: 237 rows, 264 columns, 993 nonzeros
+programs/generated/gen_0122        59049  10     2    1024    True   -0.0000    2.2644     77.39
+Read LP format model from file /tmp/gen_0226_pruned_k1.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+programs/generated/gen_0226        59049  10     1       1   False    0.0271    0.0018     37.81
+Read LP format model from file /tmp/gen_0226_pruned_k2.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+programs/generated/gen_0226        59049  10     2    1024    True    0.0000    0.1808     37.81
+Read LP format model from file /tmp/gen_0322_pruned_k1.lp
+Reading time = 0.00 seconds
+: 207 rows, 236 columns, 885 nonzeros
+programs/generated/gen_0322        59049  10     1       1   False    1.0203    0.0014     41.04
+Read LP format model from file /tmp/gen_0322_pruned_k2.lp
+Reading time = 0.00 seconds
+: 207 rows, 236 columns, 885 nonzeros
+programs/generated/gen_0322        59049  10     2    1024   False    1.0159    0.2728     41.04
+Read LP format model from file /tmp/gen_0415_pruned_k1.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+programs/generated/gen_0415        59049  10     1       1   False   10.9628    0.0013     36.37
+Read LP format model from file /tmp/gen_0415_pruned_k2.lp
+Reading time = 0.00 seconds
+: 177 rows, 208 columns, 777 nonzeros
+programs/generated/gen_0415        59049  10     2    1024   False   10.9349    0.2051     36.37
