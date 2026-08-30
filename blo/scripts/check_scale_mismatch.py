@@ -1,4 +1,6 @@
 """
+Analyzes layer activation scales and dead neuron fractions across switch-point sizes (s).
+
 Usage:
     python -m blo.scripts.check_scale_mismatch \
         --problem watwa_v7 \
@@ -14,6 +16,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 
+import blo.params as blo_params
 from blo.data_preprocessor.watwa import WatwaDataPreprocessor
 from blo.models.models import SetInstanceEncodingNetwork
 
@@ -22,11 +25,8 @@ DEVICE = "cpu"
 
 
 def load_scoring_net(ckpt_path, problem):
-    ckpt = torch.load(
-        ckpt_path,
-        map_location=DEVICE,
-        weights_only=False,
-    )
+    """Loads and reconstructs a SetInstanceEncodingNetwork from a saved checkpoint."""
+    ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
 
     net = SetInstanceEncodingNetwork(
         instance_decision_embedder=ckpt["instance_decision_embedder"],
@@ -38,9 +38,11 @@ def load_scoring_net(ckpt_path, problem):
         approx_type="both",
         use_context="context_proj" in ckpt,
         context_proj=ckpt.get("context_proj"),
-        use_inst_embedding_norm=ckpt.get(
-            "use_inst_embedding_norm", False
-        ),
+        use_inst_embedding_norm=ckpt.get("use_inst_embedding_norm", False),
+        use_attention="attention_proj" in ckpt,
+        attention_proj=ckpt.get("attention_proj"),
+        attention=ckpt.get("attention"),
+        attention_num_heads=ckpt["params"].get("attention_num_heads", 4),
     )
 
     if ckpt.get("use_inst_embedding_norm", False):
@@ -48,11 +50,11 @@ def load_scoring_net(ckpt_path, problem):
 
     net.to(DEVICE)
     net.eval()
-
     return net
 
 
 def build_inst_tensor(pml_feats, s):
+    """Constructs the normalized instance feature tensor for a program instance."""
     features = [
         [
             pf["time_ns_high"] / 1e6,
@@ -73,34 +75,27 @@ def build_inst_tensor(pml_feats, s):
         ]
         for pf in pml_feats
     ]
-
     return torch.tensor(features, dtype=torch.float32).unsqueeze(0)
 
 
 def get_final_embedder_in_layer(net):
+    """Extracts the first linear layer from final_instance_embedder."""
     for module in net.final_instance_embedder.modules():
         if isinstance(module, torch.nn.Linear):
             return module
-
-    raise RuntimeError(
-        "Keine Linear-Schicht in final_instance_embedder gefunden."
-    )
+    raise RuntimeError("No Linear layer found in final_instance_embedder.")
 
 
 def get_inst_embedder_in_layer(net):
+    """Extracts the 15-feature input linear layer from instance_decision_embedder."""
     for module in net.instance_decision_embedder.modules():
         if isinstance(module, torch.nn.Linear) and module.in_features == 15:
             return module
-
-    raise RuntimeError(
-        "Keine Linear(in=15)-Schicht in instance_decision_embedder gefunden."
-    )
+    raise RuntimeError("No Linear(in_features=15) layer found in instance_decision_embedder.")
 
 
 def main(args):
-    import blo.params as params
-
-    problem_config = getattr(params, args.problem)
+    problem_config = getattr(blo_params, args.problem)
 
     preproc = WatwaDataPreprocessor(
         model_type="inst_encoder",
@@ -110,10 +105,8 @@ def main(args):
     net = load_scoring_net(args.ckpt, args.problem)
 
     has_norm = getattr(net, "use_inst_embedding_norm", False)
-    print(
-        f"use_inst_embedding_norm im Checkpoint: {has_norm} "
-        f"({'wird beruecksichtigt' if has_norm else 'nicht vorhanden -- alter Pfad ohne LayerNorm'})\n"
-    )
+    status_str = "enabled" if has_norm else "disabled (legacy checkpoint without LayerNorm)"
+    print(f"Checkpoint LayerNorm status: {status_str}\n")
 
     final_input_layer = get_final_embedder_in_layer(net)
     W = final_input_layer.weight.detach()
@@ -143,11 +136,7 @@ def main(args):
     n_processed = 0
 
     for program_dir in problem_config.program_dirs:
-        result_path = os.path.join(
-            program_dir,
-            "build",
-            "optimize-result.json",
-        )
+        result_path = os.path.join(program_dir, "build", "optimize-result.json")
         if not os.path.exists(result_path):
             continue
 
@@ -155,10 +144,7 @@ def main(args):
             result = json.load(f)
 
         s = len(ast.literal_eval(result["ideal_scenario"]))
-
-        pml_feats = preproc._parse_pml_features(
-            {"program_dir": program_dir}
-        )
+        pml_feats = preproc._parse_pml_features({"program_dir": program_dir})
         inst_t = build_inst_tensor(pml_feats, s)
 
         with torch.no_grad():
@@ -179,25 +165,24 @@ def main(args):
         dead_frac_sum = (pre_sum <= 0).float().mean().item()
         dead_frac_mean = (pre_mean <= 0).float().mean().item()
 
-        by_s[s]["h1_agg_norm"].append(
-            h1_agg_sum.norm().item()
-        )
+        by_s[s]["h1_agg_norm"].append(h1_agg_sum.norm().item())
         by_s[s]["dead_frac_layer1"].append(dead_frac_layer1)
         by_s[s]["dead_frac_sum"].append(dead_frac_sum)
         by_s[s]["dead_frac_mean"].append(dead_frac_mean)
 
         n_processed += 1
 
-    print(f"{n_processed} Instanzen verarbeitet.\n")
-    print(
+    print(f"Processed {n_processed} instances.\n")
+    header = (
         f"{'s':>4}"
         f"{'n':>6}"
-        f"{'tot% Layer1':>14}"
+        f"{'Dead% Layer1':>16}"
         f"{'||h1_agg||':>14}"
-        f"{'tot% final (Sum)':>20}"
-        f"{'tot% final (Sum/s)':>22}"
+        f"{'Dead% Final (Sum)':>20}"
+        f"{'Dead% Final (Mean)':>22}"
     )
-    print("-" * 86)
+    print(header)
+    print("-" * len(header))
 
     for s in sorted(by_s):
         values = by_s[s]
@@ -211,7 +196,7 @@ def main(args):
         print(
             f"{s:>4}"
             f"{n:>6}"
-            f"{dead_l1_mean:>13.1f}%"
+            f"{dead_l1_mean:>15.1f}%"
             f"{norm_mean:>14.4f}"
             f"{dead_sum_mean:>19.1f}%"
             f"{dead_mean_mean:>21.1f}%"
@@ -219,9 +204,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--problem", type=str, default="watwa_v7")
-    parser.add_argument("--ckpt", type=str, required=True)
+    parser = argparse.ArgumentParser(
+        description="Check activation norm scaling and dead neuron percentages across switch points."
+    )
+    parser.add_argument("--problem", type=str, default="watwa_v7", help="Problem configuration key.")
+    parser.add_argument("--ckpt", type=str, required=True, help="Path to model checkpoint (.pt).")
 
     args = parser.parse_args()
     main(args)

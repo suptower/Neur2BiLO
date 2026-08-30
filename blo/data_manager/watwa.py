@@ -1,119 +1,113 @@
+"""
+Bilevel problem wrapper for WatwaOS energy optimization.
+"""
+
+import ast
+import json
 import os
-import pickle as pkl
-import time
+import subprocess
 
 import numpy as np
 
-from blo.blo.watwa import Watwa
-from blo.utils.watwa import get_path
-from .data_manager import DataManager
+from .blo import BLO
 
 
-class WatwaDataManager(DataManager):
+class Watwa(BLO):
+    """
+    Bilevel problem interface for WatwaOS.
+    The leader selects discrete frequency choices per switch point,
+    and the follower evaluates the corresponding energy consumption.
+    """
 
-    def __init__(self, cfg):
-        """Constructor for WatwaOS bilevel problem."""
-        self.cfg = cfg
+    def sample_instance(self, cfg, scale=True):
+        """Samples a random program instance directory from the configuration pool."""
+        program_dir = np.random.choice(cfg.program_dirs)
+        return self.read_instance(cfg, program_dir, scale=scale)
 
-        self.problem_path = get_path(self.cfg.data_path, self.cfg, "problem")
-        self.ml_data_path = get_path(self.cfg.data_path, self.cfg, "ml_data")
-
-        self.blo = Watwa()
-
-
-    def initialize_problem(self):
+    def read_instance(self, cfg, program_dir, scale=True):
         """
-        Initialize the WatwaOS problem by running the optimizer on all
-        program instances defined in cfg.program_dirs and storing the
-        resulting scenario data.
+        Loads program instance metadata and precomputed scenario solutions.
+
+        Returns a dictionary containing:
+            program_dir: Path to the program directory.
+            scenarios: Mapping from scenario keys to energy metrics.
+            ideal_energy: Minimum energy value from exhaustive search.
+            ideal_scenario: Key of the optimal scenario tuple (e.g. '(2, 0)').
+            worst_energy: Maximum energy across all evaluated scenarios.
+            k: Number of switch points.
         """
-        print("Initializing WatwaOS problem...")
+        result_path = os.path.join(program_dir, "build", "optimize-result.json")
+        pml_path = os.path.join(program_dir, "build", "app.c.pml")
 
-        self.prob = self._get_problem_data(self.cfg)
+        if os.path.exists(result_path) and os.path.exists(pml_path):
+            with open(result_path) as f:
+                result = json.load(f)
+        else:
+            result = self._run_watwa(program_dir)
 
-        print("Saving problem to:", self.problem_path)
-        pkl.dump(self.prob, open(self.problem_path, 'wb'))
+        scenarios = result["solutions"]
+        ideal_energy = result["ideal_energy"]
+        ideal_scenario = result["ideal_scenario"]
 
+        first_key = next(iter(scenarios))
+        k = len(ast.literal_eval(first_key))
 
-    def _solve_lower_level_mp(self, x, instance, inst_id, mp_time, mp_count, n_samples):
-        """
-        Obtain the follower objective for a given leader decision x.
-        """
-        time_ = time.time()
+        worst_energy = max((s["energy"] for s in scenarios.values()), default=1.0)
+        for s in scenarios.values():
+            s["energy_scaled"] = (
+                s["energy"] / worst_energy if scale and worst_energy > 0 else s["energy"]
+            )
 
-        # Solve follower for fixed x (lookup in pre-computed scenarios)
-        solve_res = self.blo.solve_follower(instance, x)
-        follower_obj = solve_res["follower_obj"]
-        follower_sol = solve_res["follower_sol"]
-
-        time_ = time.time() - time_
-
-        results = {
-            'x'            : x,
-            'instance'     : instance,
-            'inst_id'      : inst_id,
-            'follower_obj' : follower_obj,
-            'follower_sol' : follower_sol,
-            'solve_res'    : solve_res,
+        return {
+            "program_dir": program_dir,
+            "scenarios": scenarios,
+            "ideal_energy": ideal_energy,
+            "ideal_scenario": ideal_scenario,
+            "worst_energy": worst_energy if scale else 1.0,
+            "k": k,
         }
 
-        self.update_mp_status(mp_count, mp_time, n_samples)
-
-        return results
-
-
-    def _sample_random_x(self, instance, X_hash=None):
-        """
-        Sample a random leader decision x ∈ {0,1,2}^s.
-        """
+    def solve_follower(self, instance, x):
+        """Looks up the follower energy objective for leader decision vector x."""
+        scenario_key = self._x_to_scenario_key(x)
         scenarios = instance["scenarios"]
 
-        # Always include ideal scenario first
-        optimal_key = instance["ideal_scenario"]
-        if X_hash is None or optimal_key not in X_hash:
-            x = list(eval(optimal_key))
-            if X_hash is not None:
-                X_hash.add(optimal_key)
-            return np.array(x)
+        if scenario_key not in scenarios:
+            raise KeyError(f"Scenario {scenario_key} not found in precomputed results.")
 
-        # Cache shuffled key order once per instance
-        if "_key_order" not in instance:
-            keys = list(scenarios.keys())
-            np.random.shuffle(keys)
-            instance["_key_order"] = keys
-            instance["_key_idx"] = 0
+        energy = scenarios[scenario_key]["energy_scaled"]
+        return {
+            "follower_obj": energy,
+            "follower_sol": list(x),
+            "leader_obj": energy,
+            "leader_sol": list(x),
+        }
 
-        key_order = instance["_key_order"]
-        idx = instance["_key_idx"]
+    def _run_watwa(self, program_dir):
+        """Runs the WatwaOS compile and optimization pipeline."""
+        result_path = os.path.join(program_dir, "build", "optimize-result.json")
 
-        # Advance past keys already sampled (handles ideal_key being mid-order)
-        while idx < len(key_order) and key_order[idx] in X_hash:
-            idx += 1
+        self._make(program_dir, "clean")
+        self._make(program_dir, "build")
+        self._make(program_dir, "optimize")
 
-        if idx >= len(key_order):
-            instance["_key_idx"] = idx
-            return None
+        if not os.path.exists(result_path):
+            raise FileNotFoundError(f"optimize-result.json not found at {result_path}")
 
-        key = key_order[idx]
-        instance["_key_idx"] = idx + 1
-        x = list(eval(key))
-        X_hash.add(key)
-        return np.array(x)
+        with open(result_path) as f:
+            return json.load(f)
 
+    def _make(self, program_dir, target):
+        """Executes a Makefile target within the given program directory."""
+        result = subprocess.run(
+            ["make", target],
+            cwd=program_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"make {target} failed in {program_dir}:\n{result.stderr}")
 
-    def _get_problem_data(self, cfg):
-        """Store generic problem information from cfg."""
-        prob = {}
-        prob['program_dirs']       = cfg.program_dirs
-        prob['n_samples_inst']     = cfg.n_samples_inst
-        prob['n_samples_per_inst'] = cfg.n_samples_per_inst
-        prob['n_samples']          = cfg.n_samples_inst * cfg.n_samples_per_inst
-        prob['time_limit']         = cfg.time_limit
-        prob['mip_gap']            = cfg.mip_gap
-        prob['verbose']            = cfg.verbose
-        prob['threads']            = cfg.threads
-        prob['tr_split']           = cfg.tr_split
-        prob['seed']               = cfg.seed
-        prob['data_path']          = cfg.data_path
-
-        return prob
+    def _x_to_scenario_key(self, x):
+        """Converts an integer decision vector to a scenario string key, e.g. [2, 0] -> '(2, 0)'."""
+        return str(tuple(int(v) for v in x))

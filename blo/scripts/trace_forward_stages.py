@@ -1,4 +1,6 @@
 """
+Traces intermediate feature representations through network stages across loop_bound sweeps.
+
 Usage:
     python -m blo.scripts.trace_forward_stages \
         --ckpt data/watwa/nn_inst_encoder_both_nsi-498_nspi-100000_s-7.pt \
@@ -16,10 +18,11 @@ from blo.data_preprocessor.watwa import WatwaDataPreprocessor
 from blo.models.models import SetInstanceEncodingNetwork
 
 
-DEVICE = "cpu"
+DEVICE = torch.device("cpu")
 
 
 def load_scoring_net(ckpt_path):
+    """Loads and reconstructs a SetInstanceEncodingNetwork from a saved checkpoint."""
     ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
 
     net = SetInstanceEncodingNetwork(
@@ -33,6 +36,10 @@ def load_scoring_net(ckpt_path):
         use_context="context_proj" in ckpt,
         context_proj=ckpt.get("context_proj"),
         use_inst_embedding_norm=ckpt.get("use_inst_embedding_norm", False),
+        use_attention="attention_proj" in ckpt,
+        attention_proj=ckpt.get("attention_proj"),
+        attention=ckpt.get("attention"),
+        attention_num_heads=ckpt["params"].get("attention_num_heads", 4),
     )
 
     if ckpt.get("use_inst_embedding_norm", False):
@@ -40,15 +47,13 @@ def load_scoring_net(ckpt_path):
 
     net.to(DEVICE)
     net.eval()
-
     return net
 
 
 def build_tensors(pml_feats, x, s):
-    inst_rows = []
-
-    for pf in pml_feats:
-        inst_rows.append([
+    """Builds instance and decision tensors for a given candidate configuration."""
+    inst_rows = [
+        [
             pf["time_ns_high"] / 1e6,
             pf["time_ns_low"] / 1e6,
             pf["power_nw_high"] / 1e9,
@@ -64,28 +69,26 @@ def build_tensors(pml_feats, x, s):
             pf["tc_ratio_x1"],
             pf["tc_ratio_x2"],
             s / 20,
-        ])
+        ]
+        for pf in pml_feats
+    ]
 
-    inst_t = torch.tensor(
-        np.array(inst_rows, dtype=np.float32)
-    ).unsqueeze(0)
+    inst_t = torch.tensor(np.array(inst_rows, dtype=np.float32)).unsqueeze(0).to(DEVICE)
 
     dec_row = np.zeros((s, 5), dtype=np.float32)
-
     for i in range(s):
         xi = int(x[i])
         tc = pml_feats[i]["transition_costs"][xi]
-
         dec_row[i, xi] = 1.0
         dec_row[i, 3] = tc["time_ns"] / 1e6
         dec_row[i, 4] = tc["power_nw"] / 1e9
 
-    dec_t = torch.tensor(dec_row).unsqueeze(0)
-
+    dec_t = torch.tensor(dec_row, dtype=torch.float32).unsqueeze(0).to(DEVICE)
     return inst_t, dec_t
 
 
 def trace_forward(net, inst_features, decision_features):
+    """Executes a forward pass while capturing activations at each intermediate stage."""
     stages = {}
 
     h1 = net.instance_decision_embedder(inst_features)
@@ -107,6 +110,8 @@ def trace_forward(net, inst_features, decision_features):
     combined = torch.cat([decision_features, h2_repeated], dim=2)
     stages["combined_decision_plus_instctx"] = combined.detach().clone()
 
+    extra_features = []
+
     if net.use_context:
         total_sum = torch.sum(combined, dim=1, keepdim=True)
         context_raw = total_sum - combined
@@ -114,9 +119,17 @@ def trace_forward(net, inst_features, decision_features):
 
         context = net.context_proj(context_raw)
         stages["context_projected"] = context.detach().clone()
+        extra_features.append(context)
 
-        combined = torch.cat([combined, context], dim=2)
-        stages["combined_plus_context"] = combined.detach().clone()
+    if getattr(net, "use_attention", False):
+        attn_input = net.attention_proj(combined)
+        attn_out, _ = net.attention(attn_input, attn_input, attn_input, need_weights=False)
+        stages["attention_output"] = attn_out.detach().clone()
+        extra_features.append(attn_out)
+
+    if extra_features:
+        combined = torch.cat([combined] + extra_features, dim=2)
+        stages["combined_plus_interactions"] = combined.detach().clone()
 
     pred_per_decision = net.value_predictor(combined)
     stages["pred_per_decision"] = pred_per_decision.detach().clone()
@@ -140,22 +153,16 @@ def main(args):
     )
     net = load_scoring_net(args.ckpt)
 
-    base_pml_feats = dp._parse_pml_features(
-        {"program_dir": args.program_dir}
-    )
-
+    base_pml_feats = dp._parse_pml_features({"program_dir": args.program_dir})
     if len(base_pml_feats) != args.s:
         raise ValueError(
-            f"{args.program_dir} hat {len(base_pml_feats)} switch points, "
-            f"erwartet {args.s}"
+            f"{args.program_dir} has {len(base_pml_feats)} switch points, expected {args.s}."
         )
 
     x = tuple(args.candidate)
-
-    print(f"Basis-Instanz: {args.program_dir}, Kandidat x={x}\n")
+    print(f"Base instance: {args.program_dir}, Candidate x={x}\n")
 
     loop_bound_grid = np.linspace(10, 2500, args.n_steps)
-
     stages_over_grid = None
 
     for loop_bound in loop_bound_grid:
@@ -163,11 +170,7 @@ def main(args):
         variant[0] = dict(variant[0])
         variant[0]["loop_bound"] = loop_bound
 
-        inst_t, dec_t = build_tensors(
-            variant,
-            x,
-            args.s,
-        )
+        inst_t, dec_t = build_tensors(variant, x, args.s)
 
         with torch.no_grad():
             stages = trace_forward(net, inst_t, dec_t)
@@ -176,34 +179,29 @@ def main(args):
             stages_over_grid = {name: [] for name in stages}
 
         for name, value in stages.items():
-            stages_over_grid[name].append(value.numpy())
+            stages_over_grid[name].append(value.cpu().numpy())
 
-    print(
-        f"{'Stufe':<38}"
+    header = (
+        f"{'Stage':<38}"
         f"{'Shape':<18}"
-        f"{'max-min (gesamt)':>18}"
-        f"{'max-min (nur SP0)':>20}"
+        f"{'Max-Min (Overall)':>18}"
+        f"{'Max-Min (SP0 Only)':>20}"
     )
-    print("-" * 94)
+    print(header)
+    print("-" * len(header))
 
     for stage_name, values in stages_over_grid.items():
         values = np.stack(values, axis=0)
-
         flat = values.reshape(values.shape[0], -1)
-        overall_range = (flat.max(axis=0) - flat.min(axis=0)).max()
+        overall_range = float((flat.max(axis=0) - flat.min(axis=0)).max())
 
         sp0_range = None
         if values.ndim >= 3 and values.shape[2] == args.s:
             sp0 = values[:, :, 0, ...]
             sp0_flat = sp0.reshape(sp0.shape[0], -1)
-            sp0_range = (
-                sp0_flat.max(axis=0) - sp0_flat.min(axis=0)
-            ).max()
+            sp0_range = float((sp0_flat.max(axis=0) - sp0_flat.min(axis=0)).max())
 
-        if sp0_range is None:
-            sp0_str = "-".rjust(18)
-        else:
-            sp0_str = f"{sp0_range:18.8f}"
+        sp0_str = "-".rjust(20) if sp0_range is None else f"{sp0_range:20.8f}"
 
         print(
             f"{stage_name:<38}"
@@ -213,25 +211,26 @@ def main(args):
         )
 
     print(
-        "\nInterpretation: Die erste Stufe, deren max-min-Wert gegen 0 geht, "
-        "während die vorherige Stufe noch eine deutliche Variation zeigt, "
-        "ist die Stelle, an der die loop_bound-Information verloren geht."
+        "\nDiagnostic Note: The first stage where the max-min range drops to near-zero "
+        "while previous stages exhibit variation indicates where loop_bound signal is lost."
     )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=str, required=True)
-    parser.add_argument("--program-dir", type=str, required=True)
-    parser.add_argument("--s", type=int, default=2)
+    parser = argparse.ArgumentParser(
+        description="Trace intermediate layer representations across a loop_bound sweep."
+    )
+    parser.add_argument("--ckpt", type=str, required=True, help="Path to model checkpoint (.pt).")
+    parser.add_argument("--program-dir", type=str, required=True, help="Path to program directory.")
+    parser.add_argument("--s", type=int, default=2, help="Expected switch-point count.")
     parser.add_argument(
         "--candidate",
         type=int,
         nargs="+",
         required=True,
-        help="z.B. --candidate 2 1 fuer x=(2,1)",
+        help="Candidate decision configuration (e.g. --candidate 2 1 for x=(2,1)).",
     )
-    parser.add_argument("--n-steps", type=int, default=20)
+    parser.add_argument("--n-steps", type=int, default=20, help="Number of loop_bound sample steps.")
 
     args = parser.parse_args()
     main(args)

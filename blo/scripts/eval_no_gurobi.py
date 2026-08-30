@@ -1,4 +1,6 @@
 """
+Evaluates neural surrogate model performance via full candidate enumeration without Gurobi.
+
 Usage:
     python -m blo.scripts.evaluate_watwa_no_gurobi \
         --problem watwa_v7 \
@@ -16,6 +18,7 @@ import time
 import numpy as np
 import torch
 
+import blo.params as blo_params
 from blo.data_preprocessor.watwa import WatwaDataPreprocessor
 from blo.models.models import SetInstanceEncodingNetwork
 
@@ -25,11 +28,8 @@ BATCH_SIZE = 4096
 
 
 def load_scoring_net(ckpt_path, problem):
-    ckpt = torch.load(
-        ckpt_path,
-        map_location=DEVICE,
-        weights_only=False,
-    )
+    """Loads and reconstructs a SetInstanceEncodingNetwork from a saved checkpoint."""
+    ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
 
     net = SetInstanceEncodingNetwork(
         instance_decision_embedder=ckpt["instance_decision_embedder"],
@@ -41,10 +41,11 @@ def load_scoring_net(ckpt_path, problem):
         approx_type="both",
         use_context="context_proj" in ckpt,
         context_proj=ckpt.get("context_proj"),
-        use_inst_embedding_norm=ckpt.get(
-            "use_inst_embedding_norm",
-            False,
-        ),
+        use_inst_embedding_norm=ckpt.get("use_inst_embedding_norm", False),
+        use_attention="attention_proj" in ckpt,
+        attention_proj=ckpt.get("attention_proj"),
+        attention=ckpt.get("attention"),
+        attention_num_heads=ckpt["params"].get("attention_num_heads", 4),
     )
 
     if ckpt.get("use_inst_embedding_norm", False):
@@ -52,11 +53,11 @@ def load_scoring_net(ckpt_path, problem):
 
     net.to(DEVICE)
     net.eval()
-
     return net
 
 
 def build_feature_tensors_batch(pml_feats, x_list, s):
+    """Constructs batched instance and decision feature tensors for candidate scenarios."""
     inst_features = [
         [
             pf["time_ns_high"] / 1e6,
@@ -79,17 +80,10 @@ def build_feature_tensors_batch(pml_feats, x_list, s):
     ]
 
     inst_features = np.asarray(inst_features, dtype=np.float32)
-
     batch_size = len(x_list)
-    inst_batch = np.broadcast_to(
-        inst_features,
-        (batch_size, s, 15),
-    ).copy()
+    inst_batch = np.broadcast_to(inst_features, (batch_size, s, 15)).copy()
 
-    dec_batch = np.zeros(
-        (batch_size, s, 5),
-        dtype=np.float32,
-    )
+    dec_batch = np.zeros((batch_size, s, 5), dtype=np.float32)
 
     for batch_idx, x in enumerate(x_list):
         for i in range(s):
@@ -97,12 +91,8 @@ def build_feature_tensors_batch(pml_feats, x_list, s):
             transition_cost = pml_feats[i]["transition_costs"][decision]
 
             dec_batch[batch_idx, i, decision] = 1.0
-            dec_batch[batch_idx, i, 3] = (
-                transition_cost["time_ns"] / 1e6
-            )
-            dec_batch[batch_idx, i, 4] = (
-                transition_cost["power_nw"] / 1e9
-            )
+            dec_batch[batch_idx, i, 3] = transition_cost["time_ns"] / 1e6
+            dec_batch[batch_idx, i, 4] = transition_cost["power_nw"] / 1e9
 
     return (
         torch.from_numpy(inst_batch).to(DEVICE),
@@ -111,39 +101,20 @@ def build_feature_tensors_batch(pml_feats, x_list, s):
 
 
 def predict_best_scenario(net, pml_feats, s, batch_size=BATCH_SIZE):
+    """Scores all 3^s candidate decision scenarios and returns the argmin configuration."""
     candidates = list(itertools.product(range(3), repeat=s))
-
     best_x = None
     best_score = None
 
     for start in range(0, len(candidates), batch_size):
-        batch = candidates[start:start + batch_size]
+        batch = candidates[start : start + batch_size]
+        inst_t, dec_t = build_feature_tensors_batch(pml_feats, batch, s)
 
-        inst_t, dec_t = build_feature_tensors_batch(
-            pml_feats,
-            batch,
-            s,
-        )
-
-        x_dummy = torch.zeros(
-            (len(batch), s),
-            dtype=torch.float32,
-            device=DEVICE,
-        )
-        p_dummy = torch.zeros(
-            (len(batch), 1),
-            dtype=torch.float32,
-            device=DEVICE,
-        )
+        x_dummy = torch.zeros((len(batch), s), dtype=torch.float32, device=DEVICE)
+        p_dummy = torch.zeros((len(batch), 1), dtype=torch.float32, device=DEVICE)
 
         with torch.no_grad():
-            scores = net(
-                inst_t,
-                dec_t,
-                x_dummy,
-                p_dummy,
-                None,
-            ).squeeze(-1)
+            scores = net(inst_t, dec_t, x_dummy, p_dummy, None).squeeze(-1)
 
         idx = int(torch.argmin(scores).item())
         score = scores[idx].item()
@@ -156,12 +127,8 @@ def predict_best_scenario(net, pml_feats, s, batch_size=BATCH_SIZE):
 
 
 def evaluate_instance(net, preproc, inst_idx, program_dir):
-    result_path = os.path.join(
-        program_dir,
-        "build",
-        "optimize-result.json",
-    )
-
+    """Evaluates a single problem instance against solver ground truth and greedy baseline."""
+    result_path = os.path.join(program_dir, "build", "optimize-result.json")
     if not os.path.exists(result_path):
         return None
 
@@ -175,41 +142,27 @@ def evaluate_instance(net, preproc, inst_idx, program_dir):
     solutions = data["solutions"]
 
     s = len(ast.literal_eval(opt_scenario))
-    pml_feats = preproc._parse_pml_features(
-        {"program_dir": program_dir}
-    )
+    pml_feats = preproc._parse_pml_features({"program_dir": program_dir})
 
     start = time.perf_counter()
     ml_x = predict_best_scenario(net, pml_feats, s)
     ml_time = time.perf_counter() - start
 
     ml_key = str(tuple(ml_x))
-
     if ml_key in solutions:
         ml_energy = solutions[ml_key]["energy"]
     else:
-        ml_energy = max(
-            solution["energy"]
-            for solution in solutions.values()
-        )
+        ml_energy = max(sol["energy"] for sol in solutions.values())
 
     quality_gap = (ml_energy - opt_energy) / opt_energy
     optimal_hit = ml_key == opt_scenario
-    speedup = (
-        watwaos_time / ml_time
-        if ml_time > 0
-        else float("inf")
-    )
+    speedup = watwaos_time / ml_time if ml_time > 0 else float("inf")
 
     greedy_key = str((2,) * s)
-
     if greedy_key in solutions:
         greedy_energy = solutions[greedy_key]["energy"]
     else:
-        greedy_energy = max(
-            solution["energy"]
-            for solution in solutions.values()
-        )
+        greedy_energy = max(sol["energy"] for sol in solutions.values())
 
     greedy_gap = (greedy_energy - opt_energy) / opt_energy
 
@@ -232,16 +185,14 @@ def evaluate_instance(net, preproc, inst_idx, program_dir):
 
 
 def main(args):
-    import blo.params as params
-
-    problem_config = getattr(params, args.problem)
+    problem_config = getattr(blo_params, args.problem)
     program_dirs = problem_config.program_dirs
 
     if args.limit is not None:
-        program_dirs = program_dirs[:args.limit]
+        program_dirs = program_dirs[: args.limit]
 
     print(
-        f"Gurobi-freie Batch-Evaluation: {len(program_dirs)} Instanzen, "
+        f"Solver-free batch evaluation: {len(program_dirs)} instances, "
         f"problem={args.problem}, ckpt={args.ckpt}"
     )
 
@@ -256,36 +207,22 @@ def main(args):
     metrics = []
 
     for inst_idx, program_dir in enumerate(program_dirs):
-        result = evaluate_instance(
-            net,
-            preproc,
-            inst_idx,
-            program_dir,
-        )
-
+        result = evaluate_instance(net, preproc, inst_idx, program_dir)
         if result is not None:
             metrics.append(result)
 
         if (inst_idx + 1) % 25 == 0:
             elapsed = time.perf_counter() - start
-            print(
-                f"  {inst_idx + 1}/{len(program_dirs)} "
-                f"done ({elapsed:.1f}s)"
-            )
+            print(f"  {inst_idx + 1}/{len(program_dirs)} instances evaluated ({elapsed:.1f}s)")
 
-    elapsed = time.perf_counter() - start
-
-    print(
-        f"\nFertig: {len(metrics)}/{len(program_dirs)} "
-        f"Instanzen ausgewertet in {elapsed:.1f}s\n"
-    )
+    total_elapsed = time.perf_counter() - start
+    print(f"\nFinished: {len(metrics)}/{len(program_dirs)} instances evaluated in {total_elapsed:.1f}s\n")
 
     if not metrics:
-        print("Keine Ergebnisse. optimize-result.json pruefen.")
+        print("No evaluation results. Please verify that optimize-result.json files exist.")
         return
 
     n_eval = len(metrics)
-
     quality_gaps = [m["quality_gap"] for m in metrics]
     greedy_gaps = [m["greedy_gap"] for m in metrics]
     optimal_hits = [m["optimal_hit"] for m in metrics]
@@ -295,83 +232,32 @@ def main(args):
     num_scenarios = [m["num_scenarios"] for m in metrics]
 
     print("=" * 65)
-    print(f"Ergebnisse ueber {n_eval} Instanzen")
+    print(f"Evaluation Summary ({n_eval} instances)")
     print("=" * 65)
 
     print("\nWatwaOS Solver:")
-    print(
-        f"  Avg solve time:          "
-        f"{np.mean(watwaos_times) * 1000:8.1f} ms"
-    )
-    print(
-        f"  Median solve time:       "
-        f"{np.median(watwaos_times) * 1000:8.1f} ms"
-    )
-    print(
-        f"  Avg num scenarios:       "
-        f"{np.mean(num_scenarios):8.0f}"
-    )
-    print(
-        f"  Max num scenarios:       "
-        f"{np.max(num_scenarios):8.0f}"
-    )
+    print(f"  Avg solve time:          {np.mean(watwaos_times) * 1000:8.1f} ms")
+    print(f"  Median solve time:       {np.median(watwaos_times) * 1000:8.1f} ms")
+    print(f"  Avg num scenarios:       {np.mean(num_scenarios):8.0f}")
+    print(f"  Max num scenarios:       {np.max(num_scenarios):8.0f}")
 
-    print("\nML Model (Full-Enum-Argmin, kein Gurobi):")
-    print(
-        f"  Avg inference time:      "
-        f"{np.mean(ml_times) * 1000:8.2f} ms"
-    )
-    print(
-        f"  Median inference time:   "
-        f"{np.median(ml_times) * 1000:8.2f} ms"
-    )
-    print(
-        f"  Mean quality gap:        "
-        f"{np.mean(quality_gaps) * 100:8.4f}%"
-    )
-    print(
-        f"  Median quality gap:      "
-        f"{np.median(quality_gaps) * 100:8.4f}%"
-    )
-    print(
-        f"  Optimal hit rate:        "
-        f"{np.mean(optimal_hits) * 100:8.1f}%"
-    )
-    print(
-        f"  Mean speedup:             "
-        f"{np.mean(speedups):8.1f}x"
-    )
-    print(
-        f"  Median speedup:           "
-        f"{np.median(speedups):8.1f}x"
-    )
+    print("\nML Model (Full Enumeration Argmin):")
+    print(f"  Avg inference time:      {np.mean(ml_times) * 1000:8.2f} ms")
+    print(f"  Median inference time:   {np.median(ml_times) * 1000:8.2f} ms")
+    print(f"  Mean quality gap:        {np.mean(quality_gaps) * 100:8.4f}%")
+    print(f"  Median quality gap:      {np.median(quality_gaps) * 100:8.4f}%")
+    print(f"  Optimal hit rate:        {np.mean(optimal_hits) * 100:8.1f}%")
+    print(f"  Mean speedup:            {np.mean(speedups):8.1f}x")
+    print(f"  Median speedup:          {np.median(speedups):8.1f}x")
 
     print("\nGreedy Baseline (all HighFreq):")
-    print(
-        f"  Mean quality gap:        "
-        f"{np.mean(greedy_gaps) * 100:8.4f}%"
-    )
-    print(
-        f"  Optimal hit rate:        "
-        f"{sum(g == 0 for g in greedy_gaps) / n_eval * 100:8.1f}%"
-    )
+    print(f"  Mean quality gap:        {np.mean(greedy_gaps) * 100:8.4f}%")
+    print(f"  Optimal hit rate:        {sum(g == 0 for g in greedy_gaps) / n_eval * 100:8.1f}%")
 
-    ml_better = sum(
-        ml_gap < greedy_gap
-        for ml_gap, greedy_gap in zip(
-            quality_gaps,
-            greedy_gaps,
-        )
-    )
+    ml_better = sum(ml_gap < greedy_gap for ml_gap, greedy_gap in zip(quality_gaps, greedy_gaps))
+    print(f"\nML outperforms Greedy:     {ml_better}/{n_eval} ({ml_better / n_eval * 100:.1f}%)")
 
-    print(
-        f"\nML besser als Greedy:      "
-        f"{ml_better}/{n_eval} "
-        f"({ml_better / n_eval * 100:.1f}%)"
-    )
-
-    print("\nAufschluesselung nach Komplexitaet (num_scenarios):")
-
+    print("\nPerformance Breakdown by Scenario Complexity:")
     bins = [
         (1, 10),
         (10, 100),
@@ -381,23 +267,13 @@ def main(args):
     ]
 
     for lower, upper in bins:
-        subset = [
-            metric
-            for metric in metrics
-            if lower <= metric["num_scenarios"] < upper
-        ]
-
+        subset = [m for m in metrics if lower <= m["num_scenarios"] < upper]
         if not subset:
             continue
 
-        gaps = [metric["quality_gap"] for metric in subset]
-        hits = [metric["optimal_hit"] for metric in subset]
-
-        upper_str = (
-            upper
-            if upper < float("inf")
-            else "inf"
-        )
+        gaps = [m["quality_gap"] for m in subset]
+        hits = [m["optimal_hit"] for m in subset]
+        upper_str = str(upper) if upper < float("inf") else "inf"
 
         print(
             f"  [{lower:6} - {upper_str:>6}] "
@@ -406,46 +282,27 @@ def main(args):
             f"hits={np.mean(hits) * 100:.1f}%"
         )
 
-    out_dir = os.path.join(
-        problem_config.data_path,
-        "watwa",
-        "results",
-    )
+    out_dir = os.path.join(problem_config.data_path, "watwa", "results")
     os.makedirs(out_dir, exist_ok=True)
-
-    out_path = os.path.join(
-        out_dir,
-        f"batch_eval_no_gurobi_{args.problem}.pkl",
-    )
+    out_path = os.path.join(out_dir, f"batch_eval_no_gurobi_{args.problem}.pkl")
 
     with open(out_path, "wb") as f:
         pickle.dump(metrics, f)
 
-    print(f"\nVollstaendige Ergebnisse gespeichert unter: {out_path}")
-    print(
-        "(Kompatibel als EVAL_PATH fuer "
-        "pruning/pruning_fullenum.py)"
-    )
+    print(f"\nFull evaluation metrics saved to: {out_path}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--problem",
-        type=str,
-        default="watwa_v7",
+    parser = argparse.ArgumentParser(
+        description="Evaluate surrogate network accuracy and inference speed without solver invocation."
     )
-    parser.add_argument(
-        "--ckpt",
-        type=str,
-        required=True,
-        help="Pfad zum .pt-Checkpoint",
-    )
+    parser.add_argument("--problem", type=str, default="watwa_v7", help="Problem configuration name.")
+    parser.add_argument("--ckpt", type=str, required=True, help="Path to .pt model checkpoint.")
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Nur die ersten N Instanzen auswerten (Smoke-Test)",
+        help="Optional limit on the number of instances to evaluate.",
     )
 
     args = parser.parse_args()

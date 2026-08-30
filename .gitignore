@@ -4,9 +4,9 @@ __pycache__/
 *.pkl
 *.aux
 *.log
-*.logclear
 *.out
 *.mps
 programs/
 *.lp
-/gurobi*
+*.err
+data/watwa/ml_data_nsi-498_nspi-100000_s-7_compact_ranklabels.npz

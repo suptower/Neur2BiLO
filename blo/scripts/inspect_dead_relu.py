@@ -1,4 +1,6 @@
 """
+Inspects first-layer pre-activations across varying loop bounds to test for dead ReLUs.
+
 Usage:
     python -m blo.scripts.inspect_dead_relu \
         --ckpt data/watwa/nn_inst_encoder_both_nsi-498_nspi-100000_s-7.pt \
@@ -7,7 +9,6 @@ Usage:
 """
 
 import argparse
-
 import numpy as np
 import torch
 
@@ -19,11 +20,8 @@ DEVICE = torch.device("cpu")
 
 
 def load_scoring_net(ckpt_path):
-    ckpt = torch.load(
-        ckpt_path,
-        map_location=DEVICE,
-        weights_only=False,
-    )
+    """Loads and reconstructs a SetInstanceEncodingNetwork from a saved checkpoint."""
+    ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
 
     net = SetInstanceEncodingNetwork(
         instance_decision_embedder=ckpt["instance_decision_embedder"],
@@ -35,10 +33,11 @@ def load_scoring_net(ckpt_path):
         approx_type="both",
         use_context="context_proj" in ckpt,
         context_proj=ckpt.get("context_proj"),
-        use_inst_embedding_norm=ckpt.get(
-            "use_inst_embedding_norm",
-            False,
-        ),
+        use_inst_embedding_norm=ckpt.get("use_inst_embedding_norm", False),
+        use_attention="attention_proj" in ckpt,
+        attention_proj=ckpt.get("attention_proj"),
+        attention=ckpt.get("attention"),
+        attention_num_heads=ckpt["params"].get("attention_num_heads", 4),
     )
 
     if ckpt.get("use_inst_embedding_norm", False):
@@ -46,15 +45,13 @@ def load_scoring_net(ckpt_path):
 
     net.to(DEVICE)
     net.eval()
-
     return net
 
 
 def build_inst_tensor(pml_feats, s):
-    rows = []
-
-    for pf in pml_feats:
-        rows.append([
+    """Constructs the normalized instance tensor for input to the embedding network."""
+    rows = [
+        [
             pf["time_ns_high"] / 1e6,
             pf["time_ns_low"] / 1e6,
             pf["power_nw_high"] / 1e9,
@@ -70,22 +67,19 @@ def build_inst_tensor(pml_feats, s):
             pf["tc_ratio_x1"],
             pf["tc_ratio_x2"],
             s / 20,
-        ])
-
+        ]
+        for pf in pml_feats
+    ]
     features = np.asarray(rows, dtype=np.float32)
-
     return torch.from_numpy(features).unsqueeze(0).to(DEVICE)
 
 
 def find_input_layer(net):
+    """Finds the first linear layer with 15 input features in instance_decision_embedder."""
     for name, module in net.instance_decision_embedder.named_modules():
         if isinstance(module, torch.nn.Linear) and module.in_features == 15:
             return name, module
-
-    raise RuntimeError(
-        "Keine Linear-Schicht mit 15 Eingangsfeatures "
-        "in instance_decision_embedder gefunden."
-    )
+    raise RuntimeError("No Linear layer with 15 input features found in instance_decision_embedder.")
 
 
 def main(args):
@@ -96,23 +90,16 @@ def main(args):
     )
     net = load_scoring_net(args.ckpt)
 
-    pml_feats = preproc._parse_pml_features(
-        {"program_dir": args.program_dir}
-    )
-
+    pml_feats = preproc._parse_pml_features({"program_dir": args.program_dir})
     if len(pml_feats) != args.s:
         raise ValueError(
-            f"{args.program_dir} hat {len(pml_feats)} Switch Points, "
-            f"erwartet werden {args.s}."
+            f"{args.program_dir} has {len(pml_feats)} switch points, expected {args.s}."
         )
 
     layer_name, first_linear = find_input_layer(net)
-
     print(
-        f"Analysierte Schicht: "
-        f"instance_decision_embedder.{layer_name} "
-        f"(in={first_linear.in_features}, "
-        f"out={first_linear.out_features})\n"
+        f"Layer analyzed: instance_decision_embedder.{layer_name} "
+        f"(in={first_linear.in_features}, out={first_linear.out_features})\n"
     )
 
     captured = {}
@@ -122,17 +109,9 @@ def main(args):
 
     hook = first_linear.register_forward_hook(capture_activation)
 
-    loop_bounds = np.linspace(
-        10,
-        2500,
-        args.n_steps,
-    )
-
+    loop_bounds = np.linspace(10, 2500, args.n_steps)
     n_hidden = first_linear.out_features
-    pre_activations = np.empty(
-        (args.n_steps, args.s, n_hidden),
-        dtype=np.float32,
-    )
+    pre_activations = np.empty((args.n_steps, args.s, n_hidden), dtype=np.float32)
 
     try:
         for step, loop_bound in enumerate(loop_bounds):
@@ -140,92 +119,57 @@ def main(args):
             current_feats[0] = dict(current_feats[0])
             current_feats[0]["loop_bound"] = loop_bound
 
-            inst_tensor = build_inst_tensor(
-                current_feats,
-                args.s,
-            )
-
+            inst_tensor = build_inst_tensor(current_feats, args.s)
             with torch.no_grad():
                 net.instance_decision_embedder(inst_tensor)
 
-            pre_activations[step] = (
-                captured["pre_activation"]
-                .squeeze(0)
-                .cpu()
-                .numpy()
-            )
+            pre_activations[step] = captured["pre_activation"].squeeze(0).cpu().numpy()
     finally:
         hook.remove()
 
-    # Nur Switch Point 0 wird variiert.
+    # Analyze responses for switch point 0
     sp0 = pre_activations[:, 0, :]
 
     always_off = np.all(sp0 <= 0, axis=0)
     always_on = np.all(sp0 > 0, axis=0)
     sign_changes = ~(always_off | always_on)
 
-    n_dead = always_off.sum()
-    n_always_on = always_on.sum()
-    n_variable = sign_changes.sum()
+    n_dead = int(always_off.sum())
+    n_always_on = int(always_on.sum())
+    n_variable = int(sign_changes.sum())
 
-    print(
-        f"Von {n_hidden} Neuronen der ersten Schicht "
-        f"(Switch Point 0, {args.n_steps} loop_bound-Werte):"
-    )
-    print(
-        f"  Immer <= 0:              "
-        f"{n_dead:4d} ({100 * n_dead / n_hidden:.1f}%)"
-    )
-    print(
-        f"  Immer > 0:               "
-        f"{n_always_on:4d} ({100 * n_always_on / n_hidden:.1f}%)"
-    )
-    print(
-        f"  Vorzeichenwechsel:       "
-        f"{n_variable:4d} ({100 * n_variable / n_hidden:.1f}%)"
-    )
+    print(f"Summary of {n_hidden} first-layer neurons (Switch point 0, {args.n_steps} loop_bound steps):")
+    print(f"  Always <= 0 (dead):      {n_dead:4d} ({100 * n_dead / n_hidden:.1f}%)")
+    print(f"  Always > 0:             {n_always_on:4d} ({100 * n_always_on / n_hidden:.1f}%)")
+    print(f"  Variable (sign flips):  {n_variable:4d} ({100 * n_variable / n_hidden:.1f}%)")
 
     activation_ranges = sp0.max(axis=0) - sp0.min(axis=0)
+    n_flat = int(np.sum(activation_ranges < 1e-4))
 
-    n_flat = np.sum(activation_ranges < 1e-4)
+    print(f"\nActivation range < 1e-4:  {n_flat}/{n_hidden} ({100 * n_flat / n_hidden:.1f}%)")
+    print(f"Max range:                {activation_ranges.max():.6f}")
+    print(f"Median range:             {np.median(activation_ranges):.6f}")
 
-    print(
-        f"\nAktivierungs-Spannweite < 1e-4: "
-        f"{n_flat}/{n_hidden} "
-        f"({100 * n_flat / n_hidden:.1f}%)"
-    )
-    print(
-        f"Maximale Spannweite:   "
-        f"{activation_ranges.max():.6f}"
-    )
-    print(
-        f"Median der Spannweiten: "
-        f"{np.median(activation_ranges):.6f}"
-    )
-
-    if (
-        n_dead / n_hidden > 0.9
-        or activation_ranges.max() < 1e-3
-    ):
+    if n_dead / n_hidden > 0.9 or activation_ranges.max() < 1e-3:
         print(
-            "\n-> Die erste Schicht ist in diesem "
-            "Eingabebereich weitgehend inaktiv bzw. "
-            "reagiert kaum auf loop_bound."
+            "\n-> The first layer is largely inactive across this input range "
+            "or does not respond to loop_bound."
         )
     else:
         print(
-            "\n-> Die erste Schicht reagiert zumindest teilweise "
-            "auf loop_bound. Die beobachtete Insensitivität "
-            "entsteht daher vermutlich in einer späteren Schicht."
+            "\n-> The first layer actively responds to loop_bound variation. "
+            "Any observed downstream insensitivity likely originates in later layers."
         )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=str, required=True)
-    parser.add_argument("--program-dir", type=str, required=True)
-    parser.add_argument("--s", type=int, default=2)
-    parser.add_argument("--n-steps", type=int, default=20)
+    parser = argparse.ArgumentParser(
+        description="Inspect first-layer neuron pre-activations across varying loop bounds."
+    )
+    parser.add_argument("--ckpt", type=str, required=True, help="Path to model checkpoint (.pt).")
+    parser.add_argument("--program-dir", type=str, required=True, help="Path to program directory.")
+    parser.add_argument("--s", type=int, default=2, help="Expected switch-point count.")
+    parser.add_argument("--n-steps", type=int, default=20, help="Number of loop_bound sample points.")
 
     args = parser.parse_args()
     main(args)
